@@ -87,7 +87,7 @@ end
 
 # print a warning if we're in dry run mode
 unless RSYNC_DRY_RUN.empty?
-  puts "WARNING: executing in dry-run mode; not actually sync'ing anything"
+  puts "💀  WARNING: executing in dry-run mode; not actually sync'ing anything"
 end
 
 # sync stdout so that progress messages are more likely to display correctly
@@ -129,7 +129,7 @@ def find_files_newer_than(path, date)
         end
       end
     else
-      print "WARNING: not adding file #{f}"
+      print "💀  WARNING: not adding file #{f}"
     end
   end
   files
@@ -237,19 +237,19 @@ def sync_folder(puts_prefix, folder_name)
       puts "#{puts_prefix}:✅  Up-sync succeeded, but operating in rsync dry-run mode; not updating the timefile for this folder."
     end
   else
-    puts "#{puts_prefix}:💀 WARNING: there was an rsync error while up-syncing; not updating the timefile for this folder."
+    puts "#{puts_prefix}:💀  WARNING: there was an rsync error while up-syncing; not updating the timefile for this folder."
   end
 
   # sync down, but only if there were no errors syncing up
   unless rsync_up_succeeded
-    puts "#{puts_prefix}:💀 WARNING: rsync failed while up-syncing; not syncing this folder down."
+    puts "#{puts_prefix}:💀  WARNING: rsync failed while up-syncing; not syncing this folder down."
   else
     rsync_down_succeeded = sync_folder_down(puts_prefix, folder_name)
 
     if rsync_down_succeeded
       puts "#{puts_prefix}:✅  Down-sync suceeded; files are up-to-date."
     else
-      puts "#{puts_prefix}:💀 WARNING: there was an rsync error while down-syncing; files may not be up-to-date."
+      puts "#{puts_prefix}:💀  WARNING: there was an rsync error while down-syncing; files may not be up-to-date."
     end
 
     # another sleep after down sync
@@ -265,7 +265,7 @@ ensure
   puts "#{puts_prefix}:🔓  deleting lockfile"
   # always unlock the lock file in .sync; note that we won't have updated the timefile unless up-sync completed
   unless File.delete(folder_lockfile)
-    puts "#{puts_prefix}:🔒  WARNING: could not delete folder lockfile #{folder_lockfile} for folder #{folder_name}; sync may fail until this lockfile is removed"
+    puts "#{puts_prefix}:💀  WARNING: could not delete folder lockfile #{folder_lockfile} for folder #{folder_name}; sync may fail until this lockfile is removed"
   end
 end
 
