@@ -9,7 +9,7 @@ require 'tempfile'
 DOT_SYNC_FOLDER = '.sync'
 SYNC_SETTINGS_BASENAME = 'sync_settings.txt'
 SYNC_SETTINGS_FILENAME = "#{DOT_SYNC_FOLDER}/#{SYNC_SETTINGS_BASENAME}"
-SHASUM_BIN = 'shasum'
+SHASUM_BIN = 'shasum -b'
 TEST_SHASUM = true
 
 # if we're missing the .sync folder, create it, together with a placeholder sync_settings.txt (YAML) file
@@ -123,7 +123,7 @@ end
 # shasum, basically; "SHA FILENAME"
 def save_file_shas(dest_file, file_shas)
   file_shas.each do |filename, sha|
-    dest_file.puts "#{sha} #{filename}"
+    dest_file.puts "#{sha} *#{filename}"
   end
 end
 
@@ -132,27 +132,33 @@ end
 def load_file_shas(source_file)
   file_shas = {}
   source_file.each do |source_file_line|
-    source_file_line_parts = source_file_line.split(' ')
-    unless 2 == source_file_line_parts.size # XXX fix regexp here && source_file_line_parts.first =~ /[\h]*40/
+    source_file_line.chomp!
+    source_file_sha = source_file_line[0..39] # get the sha
+    source_file_star = source_file_line[41..41]
+    source_file_path = source_file_line[42..-1] # skip space, binary "*" prefix
+    unless '*' == source_file_star && source_file_sha =~ /\A\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\z/
       puts "💀  ERROR: could not load shas; bad shas file or shasum binary '#{SHASUM_BIN}' does not work as expected"
       exit -1
     end
-    file_shas[source_file_line_parts.last] = source_file_line_parts.first.downcase
+    file_shas[source_file_path] = source_file_sha.downcase
   end
   file_shas
 end
 
 # for the given list of filenames, return a hash filename => sha; this just
 # calls shasum with these files as input, and parses the output
-def get_file_shas(files)
-  shasum_cmd = "#{SHASUM_BIN} #{files.join(' ')}"
+def get_file_shas(filenames)
+  filenames_escaped = filenames.map do |filename|
+    Shellwords.escape(filename)
+  end
+  shasum_cmd = "#{SHASUM_BIN} #{filenames_escaped.join(' ')}"
   shasum_stdout = `#{shasum_cmd}`
   load_file_shas(shasum_stdout.split("\n"))
 end
 
 # test shasum to make sure it works as expected
 if TEST_SHASUM
-  sync_temp_file = Tempfile.new('sync-temp')
+  sync_temp_file = Tempfile.new('sync temp')
   sync_temp_file.write('sync')
   sync_temp_file_path = sync_temp_file.path
   sync_temp_file_shas = get_file_shas([sync_temp_file_path])
