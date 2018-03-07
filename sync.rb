@@ -3,11 +3,14 @@
 require 'open3'
 require 'shellwords'
 require 'yaml'
+require 'tempfile'
 
 # this is a special folder for lock files and timing files, and the settings file that controls where and how we sync
 DOT_SYNC_FOLDER = '.sync'
 SYNC_SETTINGS_BASENAME = 'sync_settings.txt'
 SYNC_SETTINGS_FILENAME = "#{DOT_SYNC_FOLDER}/#{SYNC_SETTINGS_BASENAME}"
+SHASUM_BIN = 'shasum'
+TEST_SHASUM = true
 
 # if we're missing the .sync folder, create it, together with a placeholder sync_settings.txt (YAML) file
 unless File.directory?(DOT_SYNC_FOLDER)
@@ -44,7 +47,7 @@ unless File.directory?(DOT_SYNC_FOLDER)
       EOT
     end
   rescue Exception => e
-    puts "ERROR: could not create #{DOT_SYNC_FOLDER} or #{SYNC_SETTINGS_FILENAME}"
+    puts "💀  ERROR: could not create #{DOT_SYNC_FOLDER} or #{SYNC_SETTINGS_FILENAME}"
     puts e
     exit -1
   end
@@ -55,7 +58,7 @@ settings =
   begin
     YAML.load_file("#{SYNC_SETTINGS_FILENAME}")
   rescue Exception => e
-    puts "ERROR: could not load settings from #{SYNC_SETTINGS_FILENAME}"
+    puts "💀  ERROR: could not load settings from #{SYNC_SETTINGS_FILENAME}"
     puts e
     exit -1
   end
@@ -69,19 +72,19 @@ SETTINGS_ARE_SET = (settings['settings_are_set'] == true)
 
 # check settings
 unless SETTINGS_ARE_SET
-  puts "ERROR: please edit #{SYNC_SETTINGS_FILENAME} with your sync settings, and set settings_are_set to Yes"
+  puts "💀  ERROR: please edit #{SYNC_SETTINGS_FILENAME} with your sync settings, and set settings_are_set to Yes"
   exit -1
 end
 
 # make sure they specified an upstream folder
 unless UPSTREAM_FOLDER && !UPSTREAM_FOLDER.empty?
-  puts "ERROR: please specify upstream_folder in #{SYNC_SETTINGS_FILENAME}"
+  puts "💀  ERROR: please specify upstream_folder in #{SYNC_SETTINGS_FILENAME}"
   exit -1
 end
 
 # make sure they specified a valid sleep time
 unless SLEEP_TIME && SLEEP_TIME >= 0
-  puts "ERROR: please specify sleep_time >= 0 in #{SYNC_SETTINGS_FILENAME}"
+  puts "💀  ERROR: please specify sleep_time >= 0 in #{SYNC_SETTINGS_FILENAME}"
   exit -1
 end
 
@@ -116,17 +119,58 @@ def capture_and_echo_io(prefix, stdout, stderr)
   stderr_thread.join
 end
 
-# recurse and find all files starting from the given folder
-def find_files_newer_than(path, date)
+# save file shas to a text file; the format is the same as the output of
+# shasum, basically; "SHA FILENAME"
+def save_file_shas(dest_file, file_shas)
+  file_shas.each do |filename, sha|
+    dest_file.puts "#{sha} #{filename}"
+  end
+end
+
+# parse file shas from a given list of text file; can be used to parse the
+# output of shasum, as well
+def load_file_shas(source_file)
+  file_shas = {}
+  source_file.each do |source_file_line|
+    source_file_line_parts = source_file_line.split(' ')
+    unless 2 == source_file_line_parts.size # XXX fix regexp here && source_file_line_parts.first =~ /[\h]*40/
+      puts "💀  ERROR: could not load shas; bad shas file or shasum binary '#{SHASUM_BIN}' does not work as expected"
+      exit -1
+    end
+    file_shas[source_file_line_parts.last] = source_file_line_parts.first.downcase
+  end
+  file_shas
+end
+
+# for the given list of filenames, return a hash filename => sha; this just
+# calls shasum with these files as input, and parses the output
+def get_file_shas(files)
+  shasum_cmd = "#{SHASUM_BIN} #{files.join(' ')}"
+  shasum_stdout = `#{shasum_cmd}`
+  load_file_shas(shasum_stdout.split("\n"))
+end
+
+# test shasum to make sure it works as expected
+if TEST_SHASUM
+  sync_temp_file = Tempfile.new('sync-temp')
+  sync_temp_file.write('sync')
+  sync_temp_file_path = sync_temp_file.path
+  sync_temp_file_shas = get_file_shas([sync_temp_file_path])
+  unless 'da39a3ee5e6b4b0d3255bfef95601890afd80709' == sync_temp_file_shas[sync_temp_file_path]
+    puts "💀  ERROR: shasum binary '#{SHASUM_BIN}' does not work as expected; cannot proceed"
+    exit -1
+  end
+end
+
+# recurse and find all files starting from the given folder; skip dotfiles
+def find_all_files(path)
   files = []
   Dir.glob("#{path}/*") do |f|
     if File.directory?(f)
-      files += find_files_newer_than(f, date)
+      files += find_all_files(f)
     elsif File.file?(f)
       unless File.basename(f).start_with?('.')
-        if date.nil? || File.ctime(f) > date
-          files << f
-        end
+        files << f
       end
     else
       print "💀  WARNING: not adding file #{f}"
@@ -135,16 +179,47 @@ def find_files_newer_than(path, date)
   files
 end
 
+# recurse and find all files starting from the given folder, that are different
+# from the files listed in file_shas
+# @param path [String] the root path to search
+# @param file_shas [Hash] the existing file shas
+# @return [Hash] mapping filename => sha for all files that aren't already
+#   identical in file_shas
+def find_all_file_shas_different_than(path, file_shas)
+  all_files = find_all_files(path)
+  all_file_shas = get_file_shas(all_files)
+
+  # remove anything from all_file_shas that is identical in file_shas
+  all_file_shas.select do |filename, sha|
+    file_shas[filename] != sha
+  end
+end
+
 # sync a folder UP, using rsync
 # - this is called by sync_folder
 # - will not update timefile
 #
 # @param folder_name [String] the folder name to sync
-# @param newer_date [Time] the timestamp to limit files newer than, or nil for all files
-# @return [Boolean] true if the folder was up-sync'd successfully, false otherwise
-def sync_folder_up(puts_prefix, folder_name, newer_date = nil)
+# @param newer_date [Hash] a shas hash for this folder, for files that were
+#   previously up-sync'd (we don't re-sync these)
+# @return [Boolean] true if the folder was up-sync'd successfully, false
+#   otherwise
+def sync_folder_up(puts_prefix, folder_name, folder_shas_filename)
+  # get the list of files to sync UP
+  # - we only want files since the last time we sync'd,
+  # - otherwise, moving/deleting files on the upstream server will have no effect, since we always sync UP, then DOWN
+  folder_shas =
+    if File.file?(folder_shas_filename)
+      File.open(folder_shas_filename, 'r') do |f|
+        load_file_shas(f)
+      end
+    else
+      {}
+    end
+
   # get all files nwer than the given date
-  rsync_files = find_files_newer_than(folder_name, newer_date)
+  rsync_file_shas = find_all_file_shas_different_than(folder_name, folder_shas)
+  rsync_files = rsync_file_shas.keys
 
   # start syncing
   puts "#{puts_prefix}: △ Up-syncing #{rsync_files.size} files"
@@ -167,9 +242,29 @@ def sync_folder_up(puts_prefix, folder_name, newer_date = nil)
     wait_thread.value
   end
 
+  # make sure at least SLEEP_TIME passes between rsync, but do it in a thread
+  # so we count the time spent saving the shas file as sleep time
+  sleep_thread = Thread.new do
+    sleep SLEEP_TIME
+  end
+
+  # save the shas file if the rsync was a success
+  if rsync_status.success?
+    if RSYNC_DRY_RUN.empty?
+      puts "#{puts_prefix}:✅  Up-sync succeeded; updating the shas file for this folder."
+      File.open(folder_shas_filename, 'w') do |f|
+        save_file_shas(f, folder_shas.merge(rsync_file_shas))
+      end
+    else
+      puts "#{puts_prefix}:✅  Up-sync succeeded, but operating in rsync dry-run mode; not updating the shas file for this folder."
+    end
+  else
+    puts "#{puts_prefix}:💀  WARNING: there was an rsync error while up-syncing; not updating the shas file for this folder."
+  end
+
   # sleep a short while; this is to prevent ssh thinking that's being flooded
   puts "#{puts_prefix}:🌙  sleeping #{SLEEP_TIME} seconds"
-  sleep SLEEP_TIME
+  sleep_thread.join
 
   # return true if the sync up worked
   rsync_status.success?
@@ -214,31 +309,9 @@ def sync_folder(puts_prefix, folder_name)
     return false
   end
 
-  # get the list of files to sync UP
-  # - we only want files since the last time we sync'd,
-  # - otherwise, moving/deleting files on the upstream server will have no effect, since we always sync UP, then DOWN
-  folder_timefile = "#{DOT_SYNC_FOLDER}/#{folder_name}_time.txt"
-  newer_date =
-    if File.file?(folder_timefile)
-      File.ctime(folder_timefile)
-    end
-
   # sync them up
-  rsync_up_succeeded = sync_folder_up(puts_prefix, folder_name, newer_date)
-
-  # write the time file
-  if rsync_up_succeeded
-    if RSYNC_DRY_RUN.empty?
-      puts "#{puts_prefix}:✅  Up-sync succeeded; updating the timefile for this folder."
-      File.open(folder_timefile, 'w') do |f|
-        f.write("This is a time file for the folder #{folder_name}. The creation/modification time of this file represents the last time this folder was synced.")
-      end
-    else
-      puts "#{puts_prefix}:✅  Up-sync succeeded, but operating in rsync dry-run mode; not updating the timefile for this folder."
-    end
-  else
-    puts "#{puts_prefix}:💀  WARNING: there was an rsync error while up-syncing; not updating the timefile for this folder."
-  end
+  folder_shas_filename = "#{DOT_SYNC_FOLDER}/#{folder_name}_shas.txt"
+  rsync_up_succeeded = sync_folder_up(puts_prefix, folder_name, folder_shas_filename)
 
   # sync down, but only if there were no errors syncing up
   unless rsync_up_succeeded
@@ -260,7 +333,7 @@ rescue SystemExit, Interrupt
   puts "#{puts_prefix}:💀  ERROR: rescued exit exception; exiting"
   raise
 rescue Exception => e
-  puts "#{puts_prefix}:💀  ERROR: rescued exception #{e}; canceling this folder, but will try to continue"
+  puts "#{puts_prefix}:💀  ERROR: rescued exception: #{e}; canceling this folder, but will try to continue"
 ensure
   puts "#{puts_prefix}:🔓  deleting lockfile"
   # always unlock the lock file in .sync; note that we won't have updated the timefile unless up-sync completed
