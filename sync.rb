@@ -148,6 +148,9 @@ end
 # for the given list of filenames, return a hash filename => sha; this just
 # calls shasum with these files as input, and parses the output
 def get_file_shas(filenames)
+  # as a special case, if we have no filenames, return the empty list; if we
+  # call shasum without arguments, it won't terminate
+  return {} if filenames.empty?
   filenames_escaped = filenames.map do |filename|
     Shellwords.escape(filename)
   end
