@@ -358,14 +358,10 @@ end
 # - will not update timefile
 #
 # @param folder_name [String] the folder name to sync
-# @param newer_date [Hash] a shas hash for this folder, for files that were
-#   previously up-sync'd (we don't re-sync these)
+# @param file_sync_db [FileSyncDB] the file sync db object for this folder
 # @return [Boolean] true if the folder was up-sync'd successfully, false
 #   otherwise
-def sync_folder_up(puts_prefix, folder_name, folder_shas_filename)
-  # initialize our file info db, for syncing
-  file_sync_db = FileSyncDB.new(folder_name)
-
+def sync_folder_up(puts_prefix, folder_name, file_sync_db)
   # get all files nwer than the given date
   rsync_files = file_sync_db.find_all_files_to_up_sync_and_update_file_info!(puts_prefix)
 
@@ -420,7 +416,7 @@ end
 #
 # @param folder_name [String] the folder name to sync
 # @return [Boolean] true if folder was down-sync'd, false otherwise
-def sync_folder_down(puts_prefix, folder_name)
+def sync_folder_down(puts_prefix, folder_name, file_sync_db)
   rsync_upstream_folder = Shellwords.escape("#{UPSTREAM_FOLDER}/#{folder_name}")
   rsync_cmd = "rsync #{RSYNC_DRY_RUN} #{RSYNC_PROGRESS} #{RSYNC_DELETE} --update --exclude \"\\.*\" --compress --recursive --times --perms --links \"#{rsync_upstream_folder}\" ."
   puts "#{puts_prefix}: ▼ #{rsync_cmd}"
@@ -455,15 +451,17 @@ def sync_folder(puts_prefix, folder_name)
     return false
   end
 
+  # initialize our file info db, for syncing
+  file_sync_db = FileSyncDB.new(folder_name)
+
   # sync them up
-  folder_shas_filename = "#{DOT_SYNC_FOLDER}/#{folder_name}_shas.txt"
-  rsync_up_succeeded = sync_folder_up(puts_prefix, folder_name, folder_shas_filename)
+  rsync_up_succeeded = sync_folder_up(puts_prefix, folder_name, file_sync_db)
 
   # sync down, but only if there were no errors syncing up
   unless rsync_up_succeeded
     puts "#{puts_prefix}:💀  WARNING: rsync failed while up-syncing; not syncing this folder down."
   else
-    rsync_down_succeeded = sync_folder_down(puts_prefix, folder_name)
+    rsync_down_succeeded = sync_folder_down(puts_prefix, folder_name, file_sync_db)
 
     if rsync_down_succeeded
       puts "#{puts_prefix}:✅  Down-sync suceeded; files are up-to-date."
