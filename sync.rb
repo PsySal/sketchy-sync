@@ -229,29 +229,13 @@ class FileSyncDB
   end
 
   # determine a list of files to update, and update our file info accordingly so it can be saved for the next run
-  def find_all_files_to_up_sync_and_update_file_info!(puts_prefix)
+  def update_file_info_and_find_all_files_to_up_sync!(puts_prefix)
     # get a list of everything in this folder, and select only those that need to be sync'd
     all_file_stats = {}
     _find_all_file_stats(@folder_name, all_file_stats)
 
-    # get a list of all filenames to calculate shas for
-    # - if FAST_MODE is not set, or this folder is in FAST_MODE_EXCLUDE_ROOT_DIRS, then this will be all files
-    # - otherwise, this will be all files smaller than FAST_MODE_FILE_SIZE_LIMIT
-    all_sha_filenames = []
-    if !FAST_MODE || FAST_MODE_EXCLUDE_ROOT_DIRS.include?(@folder_name)
-      puts "#{puts_prefix}: △ computing full sha signatures for folder #{@folder_name}"
-      all_sha_filenames = all_file_stats.keys
-    else
-      puts "#{puts_prefix}: △ computing partial sha signatures for folder #{@folder_name}"
-      all_file_stats.each do |filename, stats|
-        if stats.size >= FAST_MODE_FILE_SIZE_LIMIT
-          all_sha_filenames << filename
-        end
-      end
-    end
-
     # calculate shas for the files we need them for
-    all_shas = get_file_shas(puts_prefix, all_sha_filenames)
+    all_shas = _get_required_file_shas(all_file_stats)
 
     # compute anything that needs to be up-sync'd
     # - if we don't have a record for it
@@ -269,7 +253,7 @@ class FileSyncDB
         elsif sha256
           # we have a sha256, so only update if it doesn't match what we have in our file info
           sha256 != file_info_line['sha256']
-        elsif stats['update_ts'] > file_info_line['sync_ts']
+        elsif stats['modified_ts'] > file_info_line['sync_ts']
           # timestamp is newer on the actual file than in our info line, so update
           true
         else
@@ -296,6 +280,39 @@ class FileSyncDB
     end
 
     sync_filenames
+  end
+
+  # refresh everything for files newer than the given timestamp
+  # - this is intended for use after down sync, to update the file sync db with any downloaded files
+  def update_file_info_after_down_sync!(down_sync_ts)
+    all_file_stats = {}
+    _find_all_file_stats(@folder_name, all_file_stats)
+
+    # choose only the newly downloaded or updated files
+    new_file_stats = {}
+    all_file_stats.each do |filename, stats|
+      if stats['modified_ts'] > down_sync_ts
+        new_file_stats[filename] = stats
+      end
+    end
+
+    # calculate shas for new files, as needed, as with up-sync
+    all_shas = _get_required_file_shas(new_file_stats)
+
+    # update file infos for all the ewer files
+    new_file_stats.each do |filename, stats|
+      file_info_line = @file_info[filename]
+      unless file_info_line
+        @file_info[filename] = {}
+        file_info_line = @file_info[filename]
+      end
+
+      # set sha2456, as with up-sync
+      file_info_line['sha256'] = all_shas[filename]
+
+      # set the sync ts to the file modified ts
+      file_info_line['sync_ts'] = stats['modified_ts']
+    end
   end
 
   private
@@ -331,7 +348,7 @@ class FileSyncDB
   end
 
   # find all files, starting from the given folder, not including dotfiles
-  # @return [Hash<String, Hash>] mapping filename => { 'size' => size, 'update_ts' => update_timestamp }
+  # @return [Hash<String, Hash>] mapping filename => { 'size' => size, 'modified_ts' => mtime }
   def _find_all_file_stats(folder_name, dest_file_stats)
     # first just get a list of all files not starting with dot
     Dir.glob("#{@folder_name}/*") do |f|
@@ -342,7 +359,7 @@ class FileSyncDB
         File.stat(f).do |fs|
           dest_file_stats[f] = {
             'size' => fs.size,
-            'mtime' => fs.mtime.to_i
+            'modified_ts' => fs.mtime.to_i
           }
         end
       else
@@ -350,6 +367,26 @@ class FileSyncDB
       end
     end
     files
+  end
+
+  # calculate all shas for required files, given an input file stats map
+  # - if FAST_MODE is not set, or this folder is in FAST_MODE_EXCLUDE_ROOT_DIRS, then this will be all files
+  # - otherwise, this will be all files smaller than FAST_MODE_FILE_SIZE_LIMIT
+  def _get_required_file_shas(puts_prefix, all_file_stats)
+    all_sha_filenames = []
+    if !FAST_MODE || FAST_MODE_EXCLUDE_ROOT_DIRS.include?(@folder_name)
+      puts "#{puts_prefix}: ! computing full sha signatures for folder #{@folder_name}"
+      all_sha_filenames = all_file_stats.keys
+    else
+      puts "#{puts_prefix}: ! computing partial sha signatures for folder #{@folder_name}"
+      all_file_stats.each do |filename, stats|
+        if stats.size >= FAST_MODE_FILE_SIZE_LIMIT
+          all_sha_filenames << filename
+        end
+      end
+    end
+
+    get_file_shas(puts_prefix, all_sha_filenames)
   end
 end
 
@@ -363,7 +400,7 @@ end
 #   otherwise
 def sync_folder_up(puts_prefix, folder_name, file_sync_db)
   # get all files nwer than the given date
-  rsync_files = file_sync_db.find_all_files_to_up_sync_and_update_file_info!(puts_prefix)
+  rsync_files = file_sync_db.update_file_info_and_find_all_files_to_up_sync!(puts_prefix)
 
   # start syncing
   puts "#{puts_prefix}: △ Up-syncing #{rsync_files.size} files"
@@ -395,13 +432,13 @@ def sync_folder_up(puts_prefix, folder_name, file_sync_db)
   # save the shas file if the rsync was a success
   if rsync_status.success?
     if RSYNC_DRY_RUN.empty?
-      puts "#{puts_prefix}:✅  Up-sync succeeded; saving the file info for this folder"
+      puts "#{puts_prefix}:✅  Up-sync succeeded; saving the file info for this folder."
       file_sync_db.save_file_info
     else
-      puts "#{puts_prefix}:✅  Up-sync succeeded, but operating in rsync dry-run mode; not saving the file info for this folder"
+      puts "#{puts_prefix}:✅  Up-sync succeeded, but operating in rsync dry-run mode; not saving the file info for this folder."
     end
   else
-    puts "#{puts_prefix}:💀  WARNING: there was an rsync error while up-syncing; not saving the file info for this folder"
+    puts "#{puts_prefix}:💀  WARNING: there was an rsync error while up-syncing; not saving the file info for this folder."
   end
 
   # sleep a short while; this is to prevent ssh thinking that's being flooded
@@ -417,6 +454,8 @@ end
 # @param folder_name [String] the folder name to sync
 # @return [Boolean] true if folder was down-sync'd, false otherwise
 def sync_folder_down(puts_prefix, folder_name, file_sync_db)
+  before_rsync_ts = Time.now.to_i
+
   rsync_upstream_folder = Shellwords.escape("#{UPSTREAM_FOLDER}/#{folder_name}")
   rsync_cmd = "rsync #{RSYNC_DRY_RUN} #{RSYNC_PROGRESS} #{RSYNC_DELETE} --update --exclude \"\\.*\" --compress --recursive --times --perms --links \"#{rsync_upstream_folder}\" ."
   puts "#{puts_prefix}: ▼ #{rsync_cmd}"
@@ -425,6 +464,11 @@ def sync_folder_down(puts_prefix, folder_name, file_sync_db)
     wait_thread.join
     wait_thread.value
   end
+
+  # refresh the file sync db with any updated files;
+  # - note we do this regardless the downsync status, because we always want to be up to date here
+  file_sync_db.update_file_info_after_down_sync!(before_rsync_ts)
+  file_sync_db.save_file_info
 
   rsync_status.success?
 end
