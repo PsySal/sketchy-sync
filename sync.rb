@@ -4,6 +4,7 @@ require 'open3'
 require 'shellwords'
 require 'yaml'
 require 'tempfile'
+require 'pathname'
 
 # this is a special folder for lock files and timing files, and the settings file that controls where and how we sync
 DOT_SYNC_FOLDER = '.sync'
@@ -46,6 +47,21 @@ unless File.directory?(DOT_SYNC_FOLDER)
       # - progress messages may work better or worse on some platforms (i.e., worse on Windows)
       rsync_progress: Yes
 
+      # this controls whether or not to allow fast mode
+      # - fast mode works by checking modification time only, and only for files larger than some limit
+      # - if turned on, the fast mode limit will be in effect
+      fast_mode: No
+
+      # if fast mode is enabled, this can be used to specify excluded root folders
+      # - folders listed here will never sync using fast mode
+      # - only valid for root folders
+      # - e.g., [ "my_folder", "my_other_folder" ]
+      fast_mode_exclude_root_folders: []
+
+      # if fast mode is enabled, this is the limit in mb to enable it for
+      # - a limit of 0 means to use fast mode for all files
+      fast_mode_file_size_limit_mb: 10
+
       # this tells sync.rb that you have configured this file
       # - set it to Yes once you've configured this file
       settings_are_set: No
@@ -74,6 +90,9 @@ SLEEP_TIME = settings['sleep_time'].to_i
 RSYNC_DRY_RUN = settings['rsync_dry_run'] ? '-n' : ''
 RSYNC_DELETE = settings['rsync_delete'] ? '--delete' : ''
 RSYNC_PROGRESS = settings['rsync_progress'] ? '--progress' : ''
+FAST_MODE = settings['fast_mode']
+FAST_MODE_EXCLUDE_ROOT_FOLDERS = settings['fast_mode_exclude_root_folders']
+FAST_MODE_FILE_SIZE_LIMIT = settings['fast_mode_file_size_limit_mb'] * 1024 * 1024
 SETTINGS_ARE_SET = (settings['settings_are_set'] == true)
 
 # check settings
@@ -125,16 +144,9 @@ def capture_and_echo_io(prefix, stdout, stderr)
   stderr_thread.join
 end
 
-# save file shas to a text file; the format is the same as the output of
-# shasum, basically; "SHA FILENAME"
-def save_file_shas(dest_file, file_shas)
-  file_shas.each do |filename, sha|
-    dest_file.puts "#{sha} *#{filename}"
-  end
-end
-
-# parse file shas from a given list of text file; can be used to parse the
-# output of shasum, as well
+# parse file shas from a given list of text file
+# - can be used to parse the output of shasum, as well
+# @return [Hash<String, String>] mapping filename => sha256
 def load_file_shas(source_file)
   file_shas = {}
   source_file.each do |source_file_line|
@@ -151,8 +163,8 @@ def load_file_shas(source_file)
   file_shas
 end
 
-# for the given list of filenames, return a hash filename => sha; this just
-# calls shasum with these files as input, and parses the output
+# for the given list of filenames, return a hash filename => sha
+# - this just calls shasum with these files as input, and parses the output
 def get_file_shas(puts_prefix, filenames)
   # as a special case, if we have no filenames, return the empty list; if we
   # call shasum without arguments, it won't terminate
@@ -164,7 +176,8 @@ def get_file_shas(puts_prefix, filenames)
   until filenames_escaped.empty?
     some_filenames_escaped = filenames_escaped.take(100)
     filenames_escaped = filenames_escaped.drop(100)
-    print "#{puts_prefix}: △ calculating shas for #{filenames_escaped.size} files\r" unless puts_prefix.nil?
+    num_filenames_processed = filenames.size - filenames_escaped
+    print "#{puts_prefix}: △ calculated shas for #{num_filenames_processed} / #{filenames.size} files\r" unless puts_prefix.nil?
     shasum_cmd = "#{SHASUM_BIN} #{some_filenames_escaped.join(' ')}"
     shasum_stdout += `#{shasum_cmd}`
   end
@@ -187,36 +200,156 @@ if TEST_SHASUM
   end
 end
 
-# recurse and find all files starting from the given folder; skip dotfiles
-def find_all_files(path)
-  files = []
-  Dir.glob("#{path}/*") do |f|
-    if File.directory?(f)
-      files += find_all_files(f)
-    elsif File.file?(f)
-      unless File.basename(f).start_with?('.')
-        files << f
-      end
-    else
-      print "💀  WARNING: not adding file #{f}"
+# helper class; this represents a file information database, for storing shas and/or file sizes for a single root folder
+class FileSyncDB
+  def initialize(folder_name)
+    @folder_name = folder_name
+    @file_info_filename = "#{DOT_SYNC_FOLDER}/#{folder_name}_info.txt"
+    @file_info = {} # map filename => { 'sync_ts' => timestamp, 'sha256' => sha256 }
+
+    # if the info file exists, load it
+    if File.exist?(@file_info_filename)
+      _validate_and_set_file_info(YAML.load_file(@file_info_filename))
+    rescue Exception => e
+      puts "💀  ERROR: could not load file info from #{@file_info_filename}"
+      puts e
+      exit -1
     end
   end
-  files
-end
 
-# recurse and find all files starting from the given folder, that are different
-# from the files listed in file_shas
-# @param path [String] the root path to search
-# @param file_shas [Hash] the existing file shas
-# @return [Hash] mapping filename => sha for all files that aren't already
-#   identical in file_shas
-def find_all_file_shas_different_than(puts_prefix, path, file_shas)
-  all_files = find_all_files(path)
-  all_file_shas = get_file_shas(puts_prefix, all_files)
+  def save_file_info
+    dest_file = Tempfile.new('file_sync_db')
+    dest_file.write(@file_info.to_yaml)
+    dest_file.close()
+    FileUtils.mv(dest_file.path, @file_info_filename)
+  rescue Exception => e
+    puts "💀  ERROR: could not save file sync db to #{@file_info_filename}"
+    puts e
+    exit -1
+  end
 
-  # remove anything from all_file_shas that is identical in file_shas
-  all_file_shas.select do |filename, sha|
-    file_shas[filename] != sha
+  # determine a list of files to update, and update our file info accordingly so it can be saved for the next run
+  def find_all_files_to_up_sync_and_update_file_info!(puts_prefix)
+    # get a list of everything in this folder, and select only those that need to be sync'd
+    all_file_stats = {}
+    _find_all_file_stats(@folder_name, all_file_stats)
+
+    # get a list of all filenames to calculate shas for
+    # - if FAST_MODE is not set, or this folder is in FAST_MODE_EXCLUDE_ROOT_DIRS, then this will be all files
+    # - otherwise, this will be all files smaller than FAST_MODE_FILE_SIZE_LIMIT
+    all_sha_filenames = []
+    if !FAST_MODE || FAST_MODE_EXCLUDE_ROOT_DIRS.include?(@folder_name)
+      puts "#{puts_prefix}: △ computing full sha signatures for folder #{@folder_name}"
+      all_sha_filenames = all_file_stats.keys
+    else
+      puts "#{puts_prefix}: △ computing partial sha signatures for folder #{@folder_name}"
+      all_file_stats.each do |filename, stats|
+        if stats.size >= FAST_MODE_FILE_SIZE_LIMIT
+          all_sha_filenames << filename
+        end
+      end
+    end
+
+    # calculate shas for the files we need them for
+    all_shas = get_file_shas(puts_prefix, all_sha_filenames)
+
+    # compute anything that needs to be up-sync'd
+    # - if we don't have a record for it
+    # - if we have a sha, but the sha record doesn't match (or isn't present)
+    # - if we have a timestamp, and the timestamp is newer than the record
+    sync_filenames = []
+    all_file_stats.each do |filename, stats|
+      req_sync = false
+      file_info_line = @file_info[filename]
+      sha256 = all_shas[filename]
+      req_sync =
+        if not file_info_line
+          # we don't have a file info line yet for this file
+          true
+        elsif sha256
+          # we have a sha256, so only update if it doesn't match what we have in our file info
+          sha256 != file_info_line['sha256']
+        elsif stats['update_ts'] > file_info_line['sync_ts']
+          # timestamp is newer on the actual file than in our info line, so update
+          true
+        else
+          false
+        end
+    end
+
+    # update our file info; update sync time to be now, and sha256 if we have it
+    sync_ts = Time.now.to_i
+    all_file_stats.each do |filename, stats|
+      file_info_line = @file_info[filename]
+      unless file_info_line
+        @file_info[filename] = {}
+        file_info_line = @file_info[filename]
+      end
+
+      # update our sha256
+      # - note this will clear out shas that might have been there before
+      # - this is desired; it will eliminate stale shas even if stale because we changed the limit
+      file_info_line['sha256'] = all_shas[filename]
+
+      # update our sync time
+      file_info_line['sync_ts'] = sync_ts
+    end
+
+    sync_filenames
+  end
+
+  private
+
+  # set the @file_info array from file_info, validating it first
+  def _validate_and_set_file_info(file_info)
+    # check that file_info is a hash
+    unless file_info.is_a?(Hash)
+      raise Exception, "loaded file info is not a hash"
+    end
+
+    # check that each element is a hash, keyed on filename in this folder, and with no unexpected fields
+    valid_info_keys = [ 'sync_ts', 'sha256' ]
+    file_info.each do |filename, info|
+      unless filename.is_a?(String)
+        raise Exception, "loaded file info contains an invalid key #{filename}"
+      end
+      unless filename.start_with?("#{@folder_name}/") && Pathname.new(filename).cleanpath == filename
+        raise Exception, "loaded file info contains a filename #{filename} not in the expected path #{@folder_name}"
+      end
+
+      unless info.is_a?(Hash)
+        raise Exception, "loaded file info contains a line that is not a hash"
+      end
+      invalid_info_keys = info.keys - valid_info_keys
+      unless invalid_info_keys.empty?
+        raise Exception, "loaded file info contains a line with one or more invalid keys: #{invalid_info_keys}"
+      end
+    end
+
+    # made it this far, then everything is good
+    @file_info = file_info
+  end
+
+  # find all files, starting from the given folder, not including dotfiles
+  # @return [Hash<String, Hash>] mapping filename => { 'size' => size, 'update_ts' => update_timestamp }
+  def _find_all_file_stats(folder_name, dest_file_stats)
+    # first just get a list of all files not starting with dot
+    Dir.glob("#{@folder_name}/*") do |f|
+      if File.basename(f).start_with?('.')
+      elsif File.directory?(f)
+        _find_all_file_stats(f, dest_file_stats)
+      elsif File.file?(f)
+        File.stat(f).do |fs|
+          dest_file_stats[f] = {
+            'size' => fs.size,
+            'mtime' => fs.mtime.to_i
+          }
+        end
+      else
+        print "💀  WARNING: not adding file #{f}"
+      end
+    end
+    files
   end
 end
 
@@ -230,21 +363,11 @@ end
 # @return [Boolean] true if the folder was up-sync'd successfully, false
 #   otherwise
 def sync_folder_up(puts_prefix, folder_name, folder_shas_filename)
-  # get the list of files to sync UP
-  # - we only want files since the last time we sync'd,
-  # - otherwise, moving/deleting files on the upstream server will have no effect, since we always sync UP, then DOWN
-  folder_shas =
-    if File.file?(folder_shas_filename)
-      File.open(folder_shas_filename, 'r') do |f|
-        load_file_shas(f)
-      end
-    else
-      {}
-    end
+  # initialize our file info db, for syncing
+  file_sync_db = FileSyncDB.new(folder_name)
 
   # get all files nwer than the given date
-  rsync_file_shas = find_all_file_shas_different_than(puts_prefix, folder_name, folder_shas)
-  rsync_files = rsync_file_shas.keys
+  rsync_files = file_sync_db.find_all_files_to_up_sync_and_update_file_info!(puts_prefix)
 
   # start syncing
   puts "#{puts_prefix}: △ Up-syncing #{rsync_files.size} files"
@@ -276,15 +399,13 @@ def sync_folder_up(puts_prefix, folder_name, folder_shas_filename)
   # save the shas file if the rsync was a success
   if rsync_status.success?
     if RSYNC_DRY_RUN.empty?
-      puts "#{puts_prefix}:✅  Up-sync succeeded; updating the shas file for this folder."
-      File.open(folder_shas_filename, 'w') do |f|
-        save_file_shas(f, folder_shas.merge(rsync_file_shas))
-      end
+      puts "#{puts_prefix}:✅  Up-sync succeeded; saving the file info for this folder"
+      file_sync_db.save_file_info
     else
-      puts "#{puts_prefix}:✅  Up-sync succeeded, but operating in rsync dry-run mode; not updating the shas file for this folder."
+      puts "#{puts_prefix}:✅  Up-sync succeeded, but operating in rsync dry-run mode; not saving the file info for this folder"
     end
   else
-    puts "#{puts_prefix}:💀  WARNING: there was an rsync error while up-syncing; not updating the shas file for this folder."
+    puts "#{puts_prefix}:💀  WARNING: there was an rsync error while up-syncing; not saving the file info for this folder"
   end
 
   # sleep a short while; this is to prevent ssh thinking that's being flooded
