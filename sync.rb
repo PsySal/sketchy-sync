@@ -31,6 +31,11 @@ unless File.directory?(DOT_SYNC_FOLDER)
       # - set it to a smaller value if you think you can get away with it
       sleep_time: 2
 
+      # this determines whether rsync will be allowed to delete files locally
+      # - if set, moving files on the server will cause them to be moved locally on sync
+      # - if unset, moving files on the server will cause them to be duplicated
+      rsync_delete: No
+
       # this will prevent any files actually being transferred
       # - set it it to No once you've done a test run or two and think things are probably OK
       # - useful for test runs
@@ -67,6 +72,7 @@ settings =
 UPSTREAM_FOLDER = settings['upstream_folder'].to_s
 SLEEP_TIME = settings['sleep_time'].to_i
 RSYNC_DRY_RUN = settings['rsync_dry_run'] ? '-n' : ''
+RSYNC_DELETE = settings['rsync_delete'] ? '--delete' : ''
 RSYNC_PROGRESS = settings['rsync_progress'] ? '--progress' : ''
 SETTINGS_ARE_SET = (settings['settings_are_set'] == true)
 
@@ -147,15 +153,25 @@ end
 
 # for the given list of filenames, return a hash filename => sha; this just
 # calls shasum with these files as input, and parses the output
-def get_file_shas(filenames)
+def get_file_shas(puts_prefix, filenames)
   # as a special case, if we have no filenames, return the empty list; if we
   # call shasum without arguments, it won't terminate
   return {} if filenames.empty?
   filenames_escaped = filenames.map do |filename|
     Shellwords.escape(filename)
   end
-  shasum_cmd = "#{SHASUM_BIN} #{filenames_escaped.join(' ')}"
-  shasum_stdout = `#{shasum_cmd}`
+  shasum_stdout = ''
+  until filenames_escaped.empty?
+    some_filenames_escaped = filenames_escaped.take(100)
+    filenames_escaped = filenames_escaped.drop(100)
+    print "#{puts_prefix}: △ calculating shas for #{filenames_escaped.size} files\r" unless puts_prefix.nil?
+    shasum_cmd = "#{SHASUM_BIN} #{some_filenames_escaped.join(' ')}"
+    shasum_stdout += `#{shasum_cmd}`
+  end
+  print "\n" unless puts_prefix.nil?
+
+  # shasum_cmd = "#{SHASUM_BIN} #{filenames_escaped.join(' ')}"
+  # shasum_stdout = `#{shasum_cmd}`
   load_file_shas(shasum_stdout.split("\n"))
 end
 
@@ -164,7 +180,7 @@ if TEST_SHASUM
   sync_temp_file = Tempfile.new('sync temp')
   sync_temp_file.write('sync')
   sync_temp_file_path = sync_temp_file.path
-  sync_temp_file_shas = get_file_shas([sync_temp_file_path])
+  sync_temp_file_shas = get_file_shas(nil, [sync_temp_file_path])
   unless 'da39a3ee5e6b4b0d3255bfef95601890afd80709' == sync_temp_file_shas[sync_temp_file_path]
     puts "💀  ERROR: shasum binary '#{SHASUM_BIN}' does not work as expected; cannot proceed"
     exit -1
@@ -194,9 +210,9 @@ end
 # @param file_shas [Hash] the existing file shas
 # @return [Hash] mapping filename => sha for all files that aren't already
 #   identical in file_shas
-def find_all_file_shas_different_than(path, file_shas)
+def find_all_file_shas_different_than(puts_prefix, path, file_shas)
   all_files = find_all_files(path)
-  all_file_shas = get_file_shas(all_files)
+  all_file_shas = get_file_shas(puts_prefix, all_files)
 
   # remove anything from all_file_shas that is identical in file_shas
   all_file_shas.select do |filename, sha|
@@ -227,7 +243,7 @@ def sync_folder_up(puts_prefix, folder_name, folder_shas_filename)
     end
 
   # get all files nwer than the given date
-  rsync_file_shas = find_all_file_shas_different_than(folder_name, folder_shas)
+  rsync_file_shas = find_all_file_shas_different_than(puts_prefix, folder_name, folder_shas)
   rsync_files = rsync_file_shas.keys
 
   # start syncing
@@ -285,7 +301,7 @@ end
 # @return [Boolean] true if folder was down-sync'd, false otherwise
 def sync_folder_down(puts_prefix, folder_name)
   rsync_upstream_folder = Shellwords.escape("#{UPSTREAM_FOLDER}/#{folder_name}")
-  rsync_cmd = "rsync #{RSYNC_DRY_RUN} #{RSYNC_PROGRESS} --update --delete --exclude \"\\.*\" --compress --recursive --times --perms --links \"#{rsync_upstream_folder}\" ."
+  rsync_cmd = "rsync #{RSYNC_DRY_RUN} #{RSYNC_PROGRESS} #{RSYNC_DELETE} --update --exclude \"\\.*\" --compress --recursive --times --perms --links \"#{rsync_upstream_folder}\" ."
   puts "#{puts_prefix}: ▼ #{rsync_cmd}"
   rsync_status = Open3.popen3(ENV, rsync_cmd) do |stdin, stdout, stderr, wait_thread|
     capture_and_echo_io("#{puts_prefix}: ▼ ", stdout, stderr)
