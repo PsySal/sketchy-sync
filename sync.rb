@@ -92,7 +92,7 @@ RSYNC_DELETE = settings['rsync_delete'] ? '--delete' : ''
 RSYNC_PROGRESS = settings['rsync_progress'] ? '--progress' : ''
 FAST_MODE = settings['fast_mode']
 FAST_MODE_EXCLUDE_ROOT_FOLDERS = settings['fast_mode_exclude_root_folders']
-FAST_MODE_FILE_SIZE_LIMIT = settings['fast_mode_file_size_limit_mb'] * 1024 * 1024
+FAST_MODE_FILE_SIZE_LIMIT = settings['fast_mode_file_size_limit_mb'].to_i * 1024 * 1024
 SETTINGS_ARE_SET = (settings['settings_are_set'] == true)
 
 # check settings
@@ -176,7 +176,7 @@ def get_file_shas(puts_prefix, filenames)
   until filenames_escaped.empty?
     some_filenames_escaped = filenames_escaped.take(100)
     filenames_escaped = filenames_escaped.drop(100)
-    num_filenames_processed = filenames.size - filenames_escaped
+    num_filenames_processed = filenames.size - filenames_escaped.size
     print "#{puts_prefix}: △ calculated shas for #{num_filenames_processed} / #{filenames.size} files\r" unless puts_prefix.nil?
     shasum_cmd = "#{SHASUM_BIN} #{some_filenames_escaped.join(' ')}"
     shasum_stdout += `#{shasum_cmd}`
@@ -208,8 +208,8 @@ class FileSyncDB
     @file_info = {} # map filename => { 'sync_ts' => timestamp, 'sha256' => sha256 }
 
     # if the info file exists, load it
-    if File.exist?(@file_info_filename)
-      _validate_and_set_file_info(YAML.load_file(@file_info_filename))
+    begin
+      _validate_and_set_file_info(YAML.load_file(@file_info_filename)) if File.exist?(@file_info_filename)
     rescue Exception => e
       puts "💀  ERROR: could not load file info from #{@file_info_filename}"
       puts e
@@ -235,7 +235,7 @@ class FileSyncDB
     _find_all_file_stats(@folder_name, all_file_stats)
 
     # calculate shas for the files we need them for
-    all_shas = _get_required_file_shas(all_file_stats)
+    all_shas = _get_required_file_shas(puts_prefix, all_file_stats)
 
     # compute anything that needs to be up-sync'd
     # - if we don't have a record for it
@@ -284,7 +284,7 @@ class FileSyncDB
 
   # refresh everything for files newer than the given timestamp
   # - this is intended for use after down sync, to update the file sync db with any downloaded files
-  def update_file_info_after_down_sync!(down_sync_ts)
+  def update_file_info_after_down_sync!(puts_prefix, down_sync_ts)
     all_file_stats = {}
     _find_all_file_stats(@folder_name, all_file_stats)
 
@@ -297,7 +297,7 @@ class FileSyncDB
     end
 
     # calculate shas for new files, as needed, as with up-sync
-    all_shas = _get_required_file_shas(new_file_stats)
+    all_shas = _get_required_file_shas(puts_prefix, new_file_stats)
 
     # update file infos for all the ewer files
     new_file_stats.each do |filename, stats|
@@ -348,15 +348,14 @@ class FileSyncDB
   end
 
   # find all files, starting from the given folder, not including dotfiles
-  # @return [Hash<String, Hash>] mapping filename => { 'size' => size, 'modified_ts' => mtime }
+  # @param dest_file_stats [Hash<String, Hash>] output map from filename => { 'size' => size, 'modified_ts' => mtime }
   def _find_all_file_stats(folder_name, dest_file_stats)
-    # first just get a list of all files not starting with dot
     Dir.glob("#{@folder_name}/*") do |f|
       if File.basename(f).start_with?('.')
       elsif File.directory?(f)
         _find_all_file_stats(f, dest_file_stats)
       elsif File.file?(f)
-        File.stat(f).do |fs|
+        File.stat(f) do |fs|
           dest_file_stats[f] = {
             'size' => fs.size,
             'modified_ts' => fs.mtime.to_i
@@ -366,7 +365,6 @@ class FileSyncDB
         print "💀  WARNING: not adding file #{f}"
       end
     end
-    files
   end
 
   # calculate all shas for required files, given an input file stats map
@@ -467,7 +465,7 @@ def sync_folder_down(puts_prefix, folder_name, file_sync_db)
 
   # refresh the file sync db with any updated files;
   # - note we do this regardless the downsync status, because we always want to be up to date here
-  file_sync_db.update_file_info_after_down_sync!(before_rsync_ts)
+  file_sync_db.update_file_info_after_down_sync!(puts_prefix, before_rsync_ts)
   file_sync_db.save_file_info
 
   rsync_status.success?
@@ -521,7 +519,7 @@ rescue SystemExit, Interrupt
   puts "#{puts_prefix}:💀  ERROR: rescued exit exception; exiting"
   raise
 rescue Exception => e
-  puts "#{puts_prefix}:💀  ERROR: rescued exception: #{e}; canceling this folder, but will try to continue"
+  puts "#{puts_prefix}:💀  ERROR: canceling folder due to rescued exception: #{e}: #{e.backtrace.join(', ')}"
 ensure
   puts "#{puts_prefix}:🔓  deleting lockfile"
   # always unlock the lock file in .sync; note that we won't have updated the timefile unless up-sync completed
