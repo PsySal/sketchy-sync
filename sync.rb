@@ -259,6 +259,7 @@ class FileSyncDB
         else
           false
         end
+      sync_filenames << filename if req_sync
     end
 
     # update our file info; update sync time to be now, and sha256 if we have it
@@ -350,17 +351,17 @@ class FileSyncDB
   # find all files, starting from the given folder, not including dotfiles
   # @param dest_file_stats [Hash<String, Hash>] output map from filename => { 'size' => size, 'modified_ts' => mtime }
   def _find_all_file_stats(folder_name, dest_file_stats)
-    Dir.glob("#{@folder_name}/*") do |f|
+    Dir.glob("#{folder_name}/*") do |f|
       if File.basename(f).start_with?('.')
       elsif File.directory?(f)
         _find_all_file_stats(f, dest_file_stats)
       elsif File.file?(f)
-        File.stat(f) do |fs|
-          dest_file_stats[f] = {
-            'size' => fs.size,
-            'modified_ts' => fs.mtime.to_i
-          }
-        end
+        fs = File.stat(f)
+        raise Exception, "could not stat file: #{f}" unless fs
+        dest_file_stats[f] = {
+          'size' => fs.size,
+          'modified_ts' => fs.mtime.to_i
+        }
       else
         print "💀  WARNING: not adding file #{f}"
       end
@@ -543,7 +544,6 @@ folders_to_check.each do |folder_name|
   next if folder_name.include?('/')
   next unless File.directory?(folder_name)
   next if DOT_SYNC_FOLDER == folder_name
-
   ljust_width = [ljust_width, folder_name.length].max
 end
 
@@ -557,3 +557,5 @@ folders_to_check.each do |folder_name|
   puts_prefix = folder_name.ljust(ljust_width, ' ')
   sync_folder(puts_prefix, folder_name)
 end
+
+puts 'e'
