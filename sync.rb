@@ -557,5 +557,3 @@ folders_to_check.each do |folder_name|
   puts_prefix = folder_name.ljust(ljust_width, ' ')
   sync_folder(puts_prefix, folder_name)
 end
-
-puts 'e'
