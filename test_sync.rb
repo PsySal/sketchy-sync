@@ -16,7 +16,7 @@ class SyncTester
   end
 
   def test_dot_sync_dir_was_initialized
-    source_dir, dest_dir = _setup
+    source_dir, dest_dir = _setup(false, false)
     _assert_dir_contents "#{source_dir}/.sync", ['sync_settings.txt'], 'sync_settings.txt is in .sync dir'
     settings = _load_sync_settings(source_dir)
     _assert_equals settings['rsync_delete'], false, 'rsync_delete is initially set to false'
@@ -26,35 +26,56 @@ class SyncTester
   end
 
   def test_up_sync
-    source_dir, dest_dir = _setup
-    settings = _load_sync_settings(source_dir)
-    settings['upstream_folder'] = "#{dest_dir}"
-    settings['rsync_dry_run'] = false
-    settings['settings_are_set'] = true
-    _save_sync_settings(source_dir, settings)
+    source_dir, dest_dir = _setup(true, false)
+    _setup_settings(source_dir, dest_dir)
+    _assert_dir_contents dest_dir, [], 'dest dir is empty before sync'
     `./sync.rb`
-    _assert_dirs_match dest_dir, source_dir, 'dest dir matches source dir after up sync'
+    _assert_dirs_match dest_dir, source_dir, 'dest dir matches source dir after sync'
+  end
+
+  def test_down_sync
+    source_dir, dest_dir = _setup(false, true)
+    _setup_settings(source_dir, dest_dir)
+    _assert_dir_contents source_dir, [], 'source dir is empty before sync'
+    `./sync.rb`
+    _assert_dirs_match source_dir, dest_dir, 'source dir matches dest dir after sync'
   end
 
   private
 
-  def _setup
+  def _setup(init_source_dir_contents, init_dest_dir_contents)
     Dir.mkdir(TEMP_DIR) unless Dir.exist?(TEMP_DIR)
     source_dir = _cleanpath Dir.mktmpdir('source_', TEMP_DIR)
     dest_dir = _cleanpath Dir.mktmpdir('dest_', TEMP_DIR)
 
-    `cp -R #{Shellwords.escape(TESTING_DATA_DIR)}/* #{Shellwords.escape(source_dir)}`
+    _assert_dir_contents_size source_dir, 0, 'source dir is empty before setup'
+    _setup_dir_contents source_dir, 'source dir' if init_source_dir_contents
+
+    _assert_dir_contents_size dest_dir, 0, 'dest dir is empty before setup'
+    _setup_dir_contents dest_dir, 'dest dir' if init_dest_dir_contents
+
     `cp #{Shellwords.escape(SYNC_RB)} #{Shellwords.escape(source_dir)}`
-    _assert_dir_contents source_dir, ['sync.rb', 'TESTING', 'TESTING_2'], 'setup of source TESTING tempdir'
-    _assert_dir_contents "#{source_dir}/TESTING/sub_folder/", ['text 456.txt'], 'setup of TESTING/sub_folder'
-    _assert_dir_contents_size "#{source_dir}/TESTING", 6, 'number of files in source TESTING tempdir'
-    _assert_dir_contents_size dest_dir, 0, 'number of files in destination tempdir'
     Dir.chdir(source_dir)
     # _assert_equals source_dir, _cleanpath(Dir.getwd), 'changed working dir to source testing dir'
     sync_output = `./sync.rb`
     _assert_string_match sync_output, 'ERROR: please edit .sync/sync_settings.txt', 'first-run .sync dir setup'
 
     return source_dir, dest_dir
+  end
+
+  def _setup_dir_contents(dir, dir_desc)
+    `cp -R #{Shellwords.escape(TESTING_DATA_DIR)}/* #{Shellwords.escape(dir)}`
+    _assert_dir_contents dir, ['TESTING', 'TESTING_2'], "#{dir_desc} has expected folders after setup"
+    _assert_dir_contents "#{dir}/TESTING/sub_folder/", ['text 456.txt'], "#{dir_desc} has expected files in TESTING/sub_folder after setup"
+    _assert_dir_contents_size "#{dir}/TESTING", 6, "#{dir_desc} has expected number of files in TESTING/ after setup"
+  end
+
+  def _setup_settings(source_dir, dest_dir)
+    settings = _load_sync_settings(source_dir)
+    settings['upstream_folder'] = "#{dest_dir}"
+    settings['rsync_dry_run'] = false
+    settings['settings_are_set'] = true
+    _save_sync_settings(source_dir, settings)
   end
 
   def _assert_equals(actual, expected, desc)
