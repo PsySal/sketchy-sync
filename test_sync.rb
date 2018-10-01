@@ -8,9 +8,10 @@ require 'yaml'
 class SyncTester
   SYNC_RB="#{__dir__}/sync.rb"
   TESTING_DATA_DIR="#{__dir__}/test_data"
+  TEMP_DIR="#{__dir__}/temp"
 
   def initialize
-    test_dot_sync_dir_was_initialized
+    #test_dot_sync_dir_was_initialized
     test_up_sync
   end
 
@@ -27,20 +28,20 @@ class SyncTester
   def test_up_sync
     source_dir, dest_dir = _setup
     settings = _load_sync_settings(source_dir)
-    settings['upstream_folder'] = "calvin@localhost:#{dest_dir}"
+    settings['upstream_folder'] = "#{dest_dir}"
     settings['rsync_dry_run'] = false
     settings['settings_are_set'] = true
     _save_sync_settings(source_dir, settings)
-    puts source_dir, dest_dir
-    sync_output = `./sync.rb`
-    puts sync_output
+    `./sync.rb`
+    _assert_dirs_match dest_dir, source_dir, 'dest dir matches source dir after up sync'
   end
 
   private
 
   def _setup
-    source_dir = _cleanpath Dir.mktmpdir
-    dest_dir = _cleanpath Dir.mktmpdir
+    Dir.mkdir(TEMP_DIR) unless Dir.exist?(TEMP_DIR)
+    source_dir = _cleanpath Dir.mktmpdir('source_', TEMP_DIR)
+    dest_dir = _cleanpath Dir.mktmpdir('dest_', TEMP_DIR)
 
     `cp -R #{Shellwords.escape(TESTING_DATA_DIR)}/* #{Shellwords.escape(source_dir)}`
     `cp #{Shellwords.escape(SYNC_RB)} #{Shellwords.escape(source_dir)}`
@@ -68,6 +69,12 @@ class SyncTester
     STDOUT.sync
   end
 
+  def _assert_dirs_match(actual_dir, expected_dir, desc)
+    actual_dir_contents = _dir_contents_recursive(actual_dir).sort.join(',')
+    expected_dir_contents = _dir_contents_recursive(expected_dir).sort.join(',')
+    _assert_equals actual_dir_contents, expected_dir_contents, desc
+  end
+
   def _assert_dir_contents(dir, contents, desc)
     _assert_equals _dir_contents(dir).sort.join(','), contents.sort.join(','), desc
   end
@@ -78,6 +85,14 @@ class SyncTester
 
   def _dir_contents(dir)
     `ls -1 #{Shellwords.escape(dir)}`.split("\n")
+  end
+
+  def _dir_contents_recursive(dir)
+    prev_cwd = Dir.pwd
+    Dir.chdir(dir)
+    contents = `find . -not -type d -and -not -path "\./sync\.rb" -and -not -path "\./\.sync/*"`.split("\n")
+    Dir.chdir(prev_cwd)
+    contents
   end
 
   def _cleanpath(dir)
