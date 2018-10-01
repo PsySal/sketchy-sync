@@ -12,7 +12,8 @@ class SyncTester
 
   def initialize
     #test_dot_sync_dir_was_initialized
-    test_up_sync
+#    test_up_sync
+    test_down_sync
   end
 
   def test_dot_sync_dir_was_initialized
@@ -36,9 +37,13 @@ class SyncTester
   def test_down_sync
     source_dir, dest_dir = _setup(false, true)
     _setup_settings(source_dir, dest_dir)
-    _assert_dir_contents source_dir, [], 'source dir is empty before sync'
+    _assert_dir_contents source_dir, ['sync.rb'], 'source dir is empty before sync'
     `./sync.rb`
-    _assert_dirs_match source_dir, dest_dir, 'source dir matches dest dir after sync'
+    _assert_dir_contents source_dir, ['sync.rb'], 'source dir is empty after down sync into empty dir'
+    `mkdir #{source_dir}/TESTING`
+    `mkdir #{source_dir}/TESTING_2`
+    `./sync.rb`
+    _assert_dirs_match source_dir, dest_dir, 'source dir matches dest dir after sync with folder created'
   end
 
   private
