@@ -331,7 +331,7 @@ class FileSyncDB
       unless filename.is_a?(String)
         raise Exception, "loaded file info contains an invalid key #{filename}"
       end
-      unless filename.start_with?("#{@folder_name}/") && Pathname.new(filename).cleanpath == filename
+      unless filename.start_with?("#{@folder_name}/") && Pathname.new(filename).cleanpath.to_s == filename
         raise Exception, "loaded file info contains a filename #{filename} not in the expected path #{@folder_name}"
       end
 
