@@ -253,7 +253,7 @@ class FileSyncDB
         elsif sha256
           # we have a sha256, so only update if it doesn't match what we have in our file info
           sha256 != file_info_line['sha256']
-        elsif stats['modified_ts'] > file_info_line['sync_ts']
+        elsif stats['update_ts'] > file_info_line['sync_ts']
           # timestamp is newer on the actual file than in our info line, so update
           true
         else
@@ -292,7 +292,7 @@ class FileSyncDB
     # choose only the newly downloaded or updated files
     new_file_stats = {}
     all_file_stats.each do |filename, stats|
-      if stats['modified_ts'] > down_sync_ts
+      if stats['update_ts'] >= down_sync_ts
         new_file_stats[filename] = stats
       end
     end
@@ -311,8 +311,8 @@ class FileSyncDB
       # set sha2456, as with up-sync
       file_info_line['sha256'] = all_shas[filename]
 
-      # set the sync ts to the file modified ts
-      file_info_line['sync_ts'] = stats['modified_ts']
+      # set the sync ts to the file update ts
+      file_info_line['sync_ts'] = stats['update_ts']
     end
   end
 
@@ -349,7 +349,7 @@ class FileSyncDB
   end
 
   # find all files, starting from the given folder, not including dotfiles
-  # @param dest_file_stats [Hash<String, Hash>] output map from filename => { 'size' => size, 'modified_ts' => mtime }
+  # @param dest_file_stats [Hash<String, Hash>] output map from filename => { 'size' => size, 'update_ts' => mtime }
   def _find_all_file_stats(folder_name, dest_file_stats)
     Dir.glob("#{folder_name}/*") do |f|
       if File.basename(f).start_with?('.')
@@ -357,10 +357,11 @@ class FileSyncDB
         _find_all_file_stats(f, dest_file_stats)
       elsif File.file?(f)
         fs = File.stat(f)
+puts "#{f} #{fs.inspect}"
         raise Exception, "could not stat file: #{f}" unless fs
         dest_file_stats[f] = {
           'size' => fs.size,
-          'modified_ts' => fs.mtime.to_i
+          'update_ts' => fs.atime.to_i
         }
       else
         print "💀  WARNING: not adding file #{f}"
