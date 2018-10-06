@@ -17,10 +17,11 @@ class SyncTester
     test_up_sync_immediate_change_to_new_file_from_down_sync
     test_down_sync_into_empty_dir_folders
     test_down_sync_file_changes_on_server
+    test_down_sync_file_changes_locally
     test_down_sync_with_and_without_enable_rsync_delete
-
-    # test down sync, file deleted on server, down sync, file not deleted, enable rsync delete, down sync, file deleted
-    # test down sync, file deleted local, down sync, file present again
+    test_down_sync_file_deleted_locally_restored_after_down_sync
+    test_down_sync_file_moved_remotely_down_sync_file_duplicated # test down sync, file moved on server, down sync, file in both places (rsync delete off)
+    test_down_sync_file_moved_remotely_down_sync_file_moved_enable_rsync_delete # test rsync delete on, down sync, file moved on server, down sync, file moved locally
     # test above in fast and full modes
     puts
   end
@@ -84,7 +85,23 @@ class SyncTester
     _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello again\n", 'hello.txt has new contents after second down sync'
   end
 
+  def test_down_sync_file_changes_locally
+    # down sync new, update file locally, sync again, new file still new locally and on server, sync again, same
+    local_dir, remote_dir = _setup(false, true, true)
+    `mkdir #{local_dir}/TESTING`
+    `./sync.rb`
+    _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello there\n", 'hello.txt has expected contents after initial down sync'
+    _set_file_contents "#{local_dir}/TESTING/hello.txt", "hello changed\n"
+    `./sync.rb`
+    _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello changed\n", 'hello.txt has new contents locally after second sync'
+    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello changed\n", 'hello.txt has new contents on server after second sync'
+    `./sync.rb`
+    _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello changed\n", 'hello.txt has new contents locally after third sync'
+    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello changed\n", 'hello.txt has new contents on server after third sync'
+  end
+
   def test_down_sync_with_and_without_enable_rsync_delete
+    # test down sync, file deleted on server, down sync, file not deleted, enable rsync delete, down sync, file deleted
     local_dir, remote_dir = _setup(false, true, true)
     `mkdir #{local_dir}/TESTING`
     `./sync.rb`
@@ -100,6 +117,44 @@ class SyncTester
     `./sync.rb`
     _assert_dir_contents "#{remote_dir}/TESTING/sub_folder_2", [], 'the file to_delete.txt is still absent from the remote dir, even after a second sync'
     _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", [], 'the file to_delete.txt was deleted locally once rsync_delete was turned on'
+  end
+
+  def test_down_sync_file_deleted_locally_restored_after_down_sync
+    # test down sync, file deleted local, down sync, file present again
+    local_dir, remote_dir = _setup(false, true, true)
+    `mkdir #{local_dir}/TESTING`
+    `./sync.rb`
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", [ 'to_delete.txt' ], 'the file to_delete.txt is present after initial down sync'
+    `rm #{local_dir}/TESTING/sub_folder_2/to_delete.txt`
+    `./sync.rb`
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", [ 'to_delete.txt' ], 'the file to_delete.txt was restored after the second sync'
+  end
+
+  def test_down_sync_file_moved_remotely_down_sync_file_duplicated
+    # test down sync, file moved on server, down sync, file in both places (rsync delete off)
+    local_dir, remote_dir = _setup(false, true, true)
+    `mkdir #{local_dir}/TESTING`
+    `./sync.rb`
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder", [ 'text 456.txt' ], 'the file test 456.txt is present in TESTING/sub_folder after initial sync'
+    `mv #{remote_dir}/TESTING/sub_folder/text\\ 456.txt #{remote_dir}/TESTING/sub_folder_2`
+    `./sync.rb`
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", [ 'text 456.txt', 'to_delete.txt' ], 'the file test 456.txt is in TESTING/sub_folder_2 after move on the remote and a second sync'
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder", [ 'text 456.txt' ], 'the file test 456.txt is still present in TESTING/sub_folder after second sync (because rsync delete is disabled)'
+  end
+
+  def test_down_sync_file_moved_remotely_down_sync_file_moved_enable_rsync_delete
+    # test rsync delete on, down sync, file moved on server, down sync, file moved locally
+    local_dir, remote_dir = _setup(false, true, true)
+    settings = _load_sync_settings(local_dir)
+    settings['rsync_delete'] = true
+    _save_sync_settings(local_dir, settings)
+    `mkdir #{local_dir}/TESTING`
+    `./sync.rb`
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder", [ 'text 456.txt' ], 'the file test 456.txt is present in TESTING/sub_folder after initial sync'
+    `mv #{remote_dir}/TESTING/sub_folder/text\\ 456.txt #{remote_dir}/TESTING/sub_folder_2`
+    `./sync.rb`
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", [ 'text 456.txt', 'to_delete.txt' ], 'the file test 456.txt is in TESTING/sub_folder_2 after move on the remote and a second sync'
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder", [], 'the file test 456.txt is no longer present in TESTING/sub_folder after second sync (because rsync delete is enabled)'
   end
 
   private
