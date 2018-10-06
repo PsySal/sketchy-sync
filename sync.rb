@@ -357,7 +357,6 @@ class FileSyncDB
         _find_all_file_stats(f, dest_file_stats)
       elsif File.file?(f)
         fs = File.stat(f)
-puts "#{f} #{fs.inspect}"
         raise Exception, "could not stat file: #{f}" unless fs
         dest_file_stats[f] = {
           'size' => fs.size,
@@ -374,7 +373,7 @@ puts "#{f} #{fs.inspect}"
   # - otherwise, this will be all files smaller than FAST_MODE_FILE_SIZE_LIMIT
   def _get_required_file_shas(puts_prefix, all_file_stats)
     all_sha_filenames = []
-    if !FAST_MODE || FAST_MODE_EXCLUDE_ROOT_DIRS.include?(@folder_name)
+    if !FAST_MODE || FAST_MODE_EXCLUDE_ROOT_FOLDERS.include?(@folder_name)
       puts "#{puts_prefix}: ! computing full sha signatures for folder #{@folder_name}"
       all_sha_filenames = all_file_stats.keys
     else
