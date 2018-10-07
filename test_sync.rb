@@ -11,18 +11,25 @@ class SyncTester
   TEMP_DIR="#{__dir__}/temp"
 
   def initialize
-    test_dot_sync_dir_was_initialized
-    test_up_sync_into_empty_dir
-    test_up_sync_file_changes_locally
-    test_up_sync_immediate_change_to_new_file_from_down_sync
-    test_down_sync_into_empty_dir_folders
-    test_down_sync_file_changes_on_server
-    test_down_sync_file_changes_locally
-    test_down_sync_with_and_without_enable_rsync_delete
-    test_down_sync_file_deleted_locally_restored_after_down_sync
-    test_down_sync_file_moved_remotely_down_sync_file_duplicated # test down sync, file moved on server, down sync, file in both places (rsync delete off)
-    test_down_sync_file_moved_remotely_down_sync_file_moved_enable_rsync_delete # test rsync delete on, down sync, file moved on server, down sync, file moved locally
-    # test above in fast and full modes
+    [false, true].each do |fast_mode|
+      @fast_mode = true # fast_mode
+      test_dot_sync_dir_was_initialized
+      test_up_sync_into_empty_dir
+      test_up_sync_file_changes_locally
+      test_up_sync_immediate_change_to_new_file_from_down_sync
+      test_down_sync_into_empty_dir_folders
+      test_down_sync_file_changes_on_server
+      test_down_sync_file_changes_locally
+      test_down_sync_with_and_without_enable_rsync_delete
+      test_down_sync_file_deleted_locally_restored_after_down_sync
+      test_down_sync_file_moved_remotely_down_sync_file_duplicated # test down sync, file moved on server, down sync, file in both places (rsync delete off)
+      test_down_sync_file_moved_remotely_down_sync_file_moved_enable_rsync_delete # test rsync delete on, down sync, file moved on server, down sync, file moved locally
+    end
+
+    # test fast mode failure case (file contents changed but date not)
+    # test fast mode limit
+    # test fast mode exclude root folders
+
     puts
   end
 
@@ -193,6 +200,8 @@ class SyncTester
     settings['upstream_folder'] = "#{remote_dir}"
     settings['sleep_time'] = 0
     settings['rsync_dry_run'] = false
+    settings['fast_mode'] = @fast_mode
+    settings['fast_mode_file_size_limit_mb'] = 0
     settings['settings_are_set'] = true
     _save_sync_settings(local_dir, settings)
   end
