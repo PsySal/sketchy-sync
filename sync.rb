@@ -542,8 +542,8 @@ ljust_width = 1
 folders_to_check.each do |folder_name|
   folder_name = File.basename(folder_name)
   next if folder_name.include?('/')
-  next unless File.directory?(folder_name)
   next if DOT_SYNC_FOLDER == folder_name
+  Dir.mkdir(folder_name) unless File.directory?(folder_name)
   ljust_width = [ljust_width, folder_name.length].max
 end
 
