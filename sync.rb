@@ -530,20 +530,37 @@ ensure
 end
 
 # did they specify a list of folders on the commandline?
+check_create_folders = false
 folders_to_check =
   if ARGV.size > 0
+    check_create_folders = true
     ARGV.dup
   else
     Dir.glob('*')
   end
 
-# get maximum ljust width so it prints nicely
+# if dirs were passed on the commandline, then check and create any that need to be
+if check_create_folders then
+  folders_to_check.each do |folder_name|
+    if File.exist?
+      if !File.directory?
+        puts "💀  ERROR: passed #{folder_name} on the commandline, which is not a folder"
+        exit -1
+      end
+    else
+      Dir.mkdir folder_name
+    end
+  end
+end
+
+# create missing dirs, get maximum ljust width so it prints nicely
 ljust_width = 1
 folders_to_check.each do |folder_name|
   folder_name = File.basename(folder_name)
   next if folder_name.include?('/')
   next if DOT_SYNC_FOLDER == folder_name
-  Dir.mkdir(folder_name) unless File.directory?(folder_name)
+  next unless File.directory?(folder_name)
+
   ljust_width = [ljust_width, folder_name.length].max
 end
 
@@ -551,8 +568,8 @@ end
 folders_to_check.each do |folder_name|
   folder_name = File.basename(folder_name)
   next if folder_name.include?('/')
-  next unless File.directory?(folder_name)
   next if DOT_SYNC_FOLDER == folder_name
+  next unless File.directory?(folder_name)
 
   puts_prefix = folder_name.ljust(ljust_width, ' ')
   sync_folder(puts_prefix, folder_name)
