@@ -253,7 +253,7 @@ class FileSyncDB
         elsif sha256
           # we have a sha256, so only update if it doesn't match what we have in our file info
           sha256 != file_info_line['sha256']
-        elsif stats['update_ts'] > file_info_line['sync_ts']
+        elsif stats['update_ts'] >= file_info_line['sync_ts']
           # timestamp is newer on the actual file than in our info line, so update
           true
         else
