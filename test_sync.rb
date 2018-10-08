@@ -20,7 +20,7 @@ class SyncTester
 #    @use_remote_temp_dir = true
 
     [false, true].each do |fast_mode|
-      @fast_mode = true # fast_mode
+      @fast_mode = fast_mode
       test_dot_sync_dir_was_initialized
       test_up_sync_into_empty_dir
       test_up_sync_file_changes_locally
@@ -179,14 +179,16 @@ class SyncTester
 
     temp_dir_suffix = "#{Time.now.strftime("%Y-%m-%d")}_#{SecureRandom.hex(4)}"
     local_dir = "#{TEMP_DIR}/local_#{temp_dir_suffix}"
-    raise "local temp dir #{local_dir} already exists" if dir_exist?(local_dir)
+    raise "local temp dir #{local_dir} already exists" if _dir_exist?(local_dir)
     _mkdir local_dir
 
     if @use_remote_temp_dir
+      remote_dir = "#{REMOTE_TEMP_DIR}/remote_#{temp_dir_suffix}"
+      _dir_exist? remote_dir
       raise "remote temp dir implemented"
     else
       remote_dir = "#{TEMP_DIR}/remote_#{temp_dir_suffix}"
-      raise "remote temp dir #{remote_dir} already exists" if dir_exist?(remote_dir)
+      raise "remote temp dir #{remote_dir} already exists" if _dir_exist?(remote_dir)
       _mkdir remote_dir
     end
 
@@ -198,7 +200,6 @@ class SyncTester
 
     `cp #{Shellwords.escape(SYNC_RB)} #{Shellwords.escape(local_dir)}`
     Dir.chdir(local_dir)
-    # _assert_equals local_dir, _cleanpath(Dir.getwd), 'changed working dir to source testing dir'
     sync_output = _sync
     _assert_string_match sync_output, 'ERROR: please edit .sync/sync_settings.txt', 'first-run .sync dir setup'
 
@@ -256,23 +257,27 @@ class SyncTester
   end
 
   def _dir_exist?(dir)
-    Dir.exist?(dir)
+    remote_host, dir = _remote_host_and_path dir
+    dir == _exec_auto_local_or_remote(remote_host, "find #{Shellwords.escape(dir)} -type d -maxdepth 0").chomp
   end
 
   def _dir_contents(dir)
-    `ls -1 #{Shellwords.escape(dir)}`.split("\n")
+    remote_host, dir = _remote_host_and_path dir
+    _exec_auto_local_or_remote(remote_host, "ls -1 #{Shellwords.escape(dir)}").split("\n")
   end
 
   def _dir_contents_recursive(dir)
-    prev_cwd = Dir.pwd
-    Dir.chdir(dir)
-    contents = `find . -not -type d -and -not -path "\./sync\.rb" -and -not -path "\./\.sync/*"`.split("\n")
-    Dir.chdir(prev_cwd)
-    contents
-  end
-
-  def _cleanpath(dir)
-    File.expand_path(dir, '/')
+    find_cmd = "find . -not -type d -and -not -path \"\./sync\.rb\" -and -not -path \"\./\.sync/*\""
+    remote_host, remote_dir = _remote_host_and_path dir
+    if remote_host
+      contents = _exec_remote(remote_host, "cd #{Shellwords.escape(remote_dir)} && #{find_cmd}")
+    else
+      prev_cwd = Dir.pwd
+      Dir.chdir(dir)
+      contents = _exec_local(find_cmd)
+      Dir.chdir(prev_cwd)
+    end
+    contents.split("\n")
   end
 
   def _assert_file_contents(filename, contents, desc)
@@ -280,7 +285,9 @@ class SyncTester
   end
 
   def _file_contents(filename)
-    `cat #{Shellwords.escape(filename)}`
+    remote_host, filename = _remote_host_and_path filename
+    cat_cmd = "cat #{Shellwords.escape(filename)}"
+    _exec_auto_local_or_remote(remote_host, cat_cmd)
   end
 
   def _set_file_contents(filename, contents)
@@ -295,6 +302,24 @@ class SyncTester
 
   def _mv(source_filename, dest_filename_or_path)
     `mv #{Shellwords.escape(source_filename)} #{Shellwords.escape(dest_filename_or_path)}`
+  end
+
+  def _remote_host_and_path(dir_or_filename)
+    match_data = dir_or_filename.match /\A(?<remote_host>\p{Alnum}+@\p{Alnum}+):(?<remote_path>.*)\z/
+    return false, dir_or_filename unless match_data
+    return match_data[:remote_host], match_data[:remote_path]
+  end
+
+  def _exec_remote(remote_host, remote_cmd)
+    `ssh #{Shellwords.escape(remote_host)} #{Shellwords.escape(remote_cmd)} 2>/dev/null`.chomp
+  end
+
+  def _exec_local(cmd)
+    `#{cmd} 2>/dev/null`
+  end
+
+  def _exec_auto_local_or_remote(remote_host, cmd)
+    remote_host ? _exec_remote(remote_host, cmd) : _exec_local(cmd)
   end
 
   def _sync
