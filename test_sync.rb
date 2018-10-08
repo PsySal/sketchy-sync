@@ -15,7 +15,7 @@ class SyncTester
   def initialize
     # git can't commit empty folders; add the one in test data here
     empty_sub_folder = "#{TESTING_DATA_DIR}/TESTING/empty_sub_folder"
-    Dir.mkdir empty_sub_folder unless Dir.exist? empty_sub_folder
+    _mkdir empty_sub_folder unless Dir.exist? empty_sub_folder
 
 #    @use_remote_temp_dir = true
 
@@ -175,19 +175,19 @@ class SyncTester
   private
 
   def _setup(init_local_dir_contents, init_remote_dir_contents, init_settings = false)
-    Dir.mkdir(TEMP_DIR) unless Dir.exist?(TEMP_DIR)
+    _mkdir TEMP_DIR unless Dir.exist?(TEMP_DIR)
 
     temp_dir_suffix = "#{Time.now.strftime("%Y-%m-%d")}_#{SecureRandom.hex(4)}"
     local_dir = "#{TEMP_DIR}/local_#{temp_dir_suffix}"
     raise "local temp dir #{local_dir} already exists" if Dir.exist?(local_dir)
-    Dir.mkdir(local_dir)
+    _mkdir local_dir
 
     if @use_remote_temp_dir
       raise "remote temp dir implemented"
     else
       remote_dir = "#{TEMP_DIR}/remote_#{temp_dir_suffix}"
       raise "remote temp dir #{remote_dir} already exists" if Dir.exist?(remote_dir)
-      Dir.mkdir(remote_dir)
+      _mkdir remote_dir
     end
 
     _assert_dir_contents_size local_dir, 0, 'source dir is empty before setup'
@@ -252,7 +252,7 @@ class SyncTester
   end
 
   def _mkdir(dir)
-    `mkdir #{Shellwords.escape(dir)}`
+    Dir.mkdir(dir)
   end
 
   def _dir_contents(dir)
