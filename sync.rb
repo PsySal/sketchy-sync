@@ -542,8 +542,8 @@ folders_to_check =
 # if dirs were passed on the commandline, then check and create any that need to be
 if check_create_folders then
   folders_to_check.each do |folder_name|
-    if File.exist?
-      if !File.directory?
+    if File.exist? folder_name
+      unless File.directory? folder_name
         puts "💀  ERROR: passed #{folder_name} on the commandline, which is not a folder"
         exit -1
       end
