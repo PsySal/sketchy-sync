@@ -26,13 +26,14 @@ class SyncTester
       [false, true].each do |fast_mode|
         @fast_mode = fast_mode
 
-        # test failed sync (bad remote host), check db not updated, try again, check db was updated
-        # test pass a path on the commandline, with a slash, make sure it syncs up/down
-
         test_dot_sync_dir_was_initialized
+        test_up_sync_pass_path_on_cmdline
         test_up_sync_into_empty_dir
         test_up_sync_file_changes_locally
+        test_up_sync_failed_retry_succeeded
+        test_up_sync_file_changed_locally_failed_retry_succeeded
         test_up_sync_immediate_change_to_new_file_from_down_sync
+        test_down_sync_pass_path_on_cmdline
         test_down_sync_into_empty_dir_folders
         test_down_sync_file_changes_on_server
         test_down_sync_file_changes_locally
@@ -60,6 +61,16 @@ class SyncTester
     _assert_equals settings['settings_are_set'], false, 'settings_are_set is initially set to false'
   end
 
+  def test_up_sync_pass_path_on_cmdline
+    # test pass a path on the commandline, with a slash, make sure it syncs up, others don't
+    local_dir, remote_dir = _setup(true, false, true)
+    _sync('TESTING')
+    _assert_dirs_match "#{local_dir}/TESTING", "#{remote_dir}/TESTING", 'remote TESTING dir is present after it was passed on cmdline to up sync'
+    _assert_dir_contents remote_dir, [ 'TESTING' ], 'remote dir only contains TESTING (not TESTING_2) after it was passed on cmdline to up sync'
+    _sync('TESTING_2/')
+    _assert_dirs_match "#{local_dir}/TESTING_2", "#{remote_dir}/TESTING_2", 'remote TESTING_2 dir is present after it was passed on cmdline to up sync'
+  end
+
   def test_up_sync_into_empty_dir
     local_dir, remote_dir = _setup(true, false, true)
     _assert_dir_contents remote_dir, [], 'dest dir is empty before sync'
@@ -76,6 +87,39 @@ class SyncTester
     _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello again\n", 'file has new contents after second up sync'
   end
 
+  def test_up_sync_failed_retry_succeeded
+    # test failed sync (bad remote host) (so db not updated), try again, check sync went through
+    local_dir, remote_dir = _setup(true, false, true)
+    settings = _load_sync_settings(local_dir)
+    settings['upstream_folder'] = "user@example.com/temp"
+    _save_sync_settings(local_dir, settings)
+    _sync
+    _assert_dir_contents remote_dir, [], 'dest dir is empty after (failed) sync'
+    settings = _load_sync_settings(local_dir)
+    settings['upstream_folder'] = remote_dir
+    _save_sync_settings(local_dir, settings)
+    _sync
+    _assert_dirs_match local_dir, remote_dir, "local and remote dirs match after (successful) sync"
+  end
+
+  def test_up_sync_file_changed_locally_failed_retry_succeeded
+    # test initial up sync, file changed locally, failed sync (bad remote host) (so db not updated), try again, check sync went through
+    local_dir, remote_dir = _setup(true, false, true)
+    _sync
+    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello there\n", 'file has expected contents after initial upsync'
+    settings = _load_sync_settings(local_dir)
+    settings['upstream_folder'] = "user@example.com/temp"
+    _save_sync_settings(local_dir, settings)
+    _set_file_contents "#{local_dir}/TESTING/hello.txt", "this file will take two syncs to upload\n"
+    _sync
+    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello there\n", 'remote file is unchanged after failed sync'
+    settings = _load_sync_settings(local_dir)
+    settings['upstream_folder'] = remote_dir
+    _save_sync_settings(local_dir, settings)
+    _sync
+    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "this file will take two syncs to upload\n", 'remote file is unchanged after failed sync'
+  end
+
   def test_up_sync_immediate_change_to_new_file_from_down_sync
     local_dir, remote_dir = _setup(false, true, true)
     _mkdir "#{local_dir}/TESTING"
@@ -84,6 +128,16 @@ class SyncTester
     _set_file_contents "#{local_dir}/TESTING/hello.txt", "hello immediately\n"
     _sync
     _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello immediately\n", 'dest file has new contents after second sync'
+  end
+
+  def test_down_sync_pass_path_on_cmdline
+    # test pass a path on the commandline, with a slash, make sure it syncs up, others don't
+    local_dir, remote_dir = _setup(false, true, true)
+    _sync('TESTING')
+    _assert_dirs_match "#{remote_dir}/TESTING", "#{local_dir}/TESTING", 'local TESTING dir is present after it was passed on cmdline to up sync'
+    _assert_dir_contents local_dir, [ 'TESTING' ], 'local dir only contains TESTING (not TESTING_2) after it was passed on cmdline to up sync'
+    _sync('TESTING_2/')
+    _assert_dirs_match "#{remote_dir}/TESTING_2", "#{local_dir}/TESTING_2", 'local TESTING_2 dir is present after it was passed on cmdline to up sync'
   end
 
   def test_down_sync_into_empty_dir_folders
@@ -344,8 +398,8 @@ class SyncTester
     remote_host ? _exec_remote(remote_host, cmd) : _exec_local(cmd)
   end
 
-  def _sync
-    `./sync.rb`
+  def _sync(raw_args = '')
+    `./sync.rb #{raw_args}`
   end
 
   def _sync_settings_filename(local_dir)
