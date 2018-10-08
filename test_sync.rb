@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
 
+require 'net/ssh'
 require 'pathname'
 require 'securerandom'
 require 'shellwords'
@@ -16,6 +17,9 @@ class SyncTester
     # git can't commit empty folders; add the one in test data here
     empty_sub_folder = "#{TESTING_DATA_DIR}/TESTING/empty_sub_folder"
     _mkdir empty_sub_folder unless _dir_exist?(empty_sub_folder)
+
+    # ssh session management; we'll map remote_host (String) to an ssh session, and allocate as needed in _exec_remote
+    @remote_ssh_sessions = {}
 
     [false, true].each do |use_remote_temp_dir|
       @use_remote_temp_dir = use_remote_temp_dir
@@ -311,9 +315,24 @@ class SyncTester
     return match_data[:remote_host], match_data[:remote_path]
   end
 
+  def _net_ssh_session_for_remote_host(remote_host)
+    parts = remote_host.split '@'
+    raise "internal: invalid remote host format #{remote_host}" unless 2 == parts.size
+    host = parts[1]
+    user = parts[0]
+    Net::SSH.start(host, user)
+  end
+
   def _exec_remote(remote_host, remote_cmd)
-    puts "ssh #{Shellwords.escape(remote_host)} #{Shellwords.escape(remote_cmd)} 2>/dev/null" if _trace_cmd?
-    `ssh #{Shellwords.escape(remote_host)} #{Shellwords.escape(remote_cmd)} 2>/dev/null`
+    session = @remote_ssh_sessions[remote_host]
+    if session.nil? || session.closed?
+      @remote_ssh_sessions[remote_host] = _net_ssh_session_for_remote_host(remote_host)
+      session = @remote_ssh_sessions[remote_host]
+    end
+    raise "internal: could not find or create ssh session for #{remote_host}" unless session
+
+    puts "ssh (#{remote_host}): #{remote_cmd} 2>/dev/null" if _trace_cmd?
+    session.exec!(remote_cmd)
   end
 
   def _exec_local(cmd)
