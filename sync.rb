@@ -379,7 +379,7 @@ class FileSyncDB
     else
       puts "#{puts_prefix}: ! computing partial sha signatures for folder #{@folder_name}"
       all_file_stats.each do |filename, stats|
-        if stats.size >= FAST_MODE_FILE_SIZE_LIMIT
+        if stats.size < FAST_MODE_FILE_SIZE_LIMIT
           all_sha_filenames << filename
         end
       end
