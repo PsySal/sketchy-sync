@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 
 require 'pathname'
+require 'securerandom'
 require 'shellwords'
 require 'tmpdir'
 require 'yaml'
@@ -9,11 +10,14 @@ class SyncTester
   SYNC_RB="#{__dir__}/sync.rb"
   TESTING_DATA_DIR="#{__dir__}/test_data"
   TEMP_DIR="#{__dir__}/temp"
+  REMOTE_TEMP_DIR="calvin@musicbox:/Users/calvin/Temp"
 
   def initialize
     # git can't commit empty folders; add the one in test data here
     empty_sub_folder = "#{TESTING_DATA_DIR}/TESTING/empty_sub_folder"
     Dir.mkdir empty_sub_folder unless Dir.exist? empty_sub_folder
+
+#    @use_remote_temp_dir = true
 
     [false, true].each do |fast_mode|
       @fast_mode = true # fast_mode
@@ -172,8 +176,19 @@ class SyncTester
 
   def _setup(init_local_dir_contents, init_remote_dir_contents, init_settings = false)
     Dir.mkdir(TEMP_DIR) unless Dir.exist?(TEMP_DIR)
-    local_dir = _cleanpath Dir.mktmpdir('local_', TEMP_DIR)
-    remote_dir = _cleanpath Dir.mktmpdir('remote_', TEMP_DIR)
+
+    temp_dir_suffix = "#{Time.now.strftime("%Y-%m-%d")}_#{SecureRandom.hex(4)}"
+    local_dir = "#{TEMP_DIR}/local_#{temp_dir_suffix}"
+    raise "local temp dir #{local_dir} already exists" if Dir.exist?(local_dir)
+    Dir.mkdir(local_dir)
+
+    if @use_remote_temp_dir
+      raise "remote temp dir implemented"
+    else
+      remote_dir = "#{TEMP_DIR}/remote_#{temp_dir_suffix}"
+      raise "remote temp dir #{remote_dir} already exists" if Dir.exist?(remote_dir)
+      Dir.mkdir(remote_dir)
+    end
 
     _assert_dir_contents_size local_dir, 0, 'source dir is empty before setup'
     _setup_dir_contents local_dir, 'source dir' if init_local_dir_contents
