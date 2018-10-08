@@ -65,10 +65,10 @@ class SyncTester
     # test pass a path on the commandline, with a slash, make sure it syncs up, others don't
     local_dir, remote_dir = _setup(true, false, true)
     _sync('TESTING')
-    _assert_dirs_match "#{local_dir}/TESTING", "#{remote_dir}/TESTING", 'remote TESTING dir is present after it was passed on cmdline to up sync'
+    _assert_dirs_match "#{remote_dir}/TESTING", "#{local_dir}/TESTING", 'remote TESTING dir is present after it was passed on cmdline to up sync'
     _assert_dir_contents remote_dir, [ 'TESTING' ], 'remote dir only contains TESTING (not TESTING_2) after it was passed on cmdline to up sync'
     _sync('TESTING_2/')
-    _assert_dirs_match "#{local_dir}/TESTING_2", "#{remote_dir}/TESTING_2", 'remote TESTING_2 dir is present after it was passed on cmdline to up sync'
+    _assert_dirs_match "#{remote_dir}/TESTING_2", "#{local_dir}/TESTING_2", 'remote TESTING_2 dir is present after it was passed on cmdline to up sync'
   end
 
   def test_up_sync_into_empty_dir
@@ -134,10 +134,10 @@ class SyncTester
     # test pass a path on the commandline, with a slash, make sure it syncs up, others don't
     local_dir, remote_dir = _setup(false, true, true)
     _sync('TESTING')
-    _assert_dirs_match "#{remote_dir}/TESTING", "#{local_dir}/TESTING", 'local TESTING dir is present after it was passed on cmdline to up sync'
-    _assert_dir_contents local_dir, [ 'TESTING' ], 'local dir only contains TESTING (not TESTING_2) after it was passed on cmdline to up sync'
+    _assert_dirs_match "#{local_dir}/TESTING", "#{remote_dir}/TESTING", 'local TESTING dir is present after it was passed on cmdline to up sync'
+    _assert_dir_contents local_dir, [ 'TESTING', 'sync.rb' ], 'local dir only contains TESTING (not TESTING_2) after it was passed on cmdline to up sync'
     _sync('TESTING_2/')
-    _assert_dirs_match "#{remote_dir}/TESTING_2", "#{local_dir}/TESTING_2", 'local TESTING_2 dir is present after it was passed on cmdline to up sync'
+    _assert_dirs_match "#{local_dir}/TESTING_2", "#{remote_dir}/TESTING_2", 'local TESTING_2 dir is present after it was passed on cmdline to up sync'
   end
 
   def test_down_sync_into_empty_dir_folders
