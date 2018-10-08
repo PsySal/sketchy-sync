@@ -147,7 +147,7 @@ class SyncTester
     _mkdir "#{local_dir}/TESTING"
     _sync
     _assert_dir_contents "#{local_dir}/TESTING/sub_folder", [ 'text 456.txt' ], 'the file test 456.txt is present in TESTING/sub_folder after initial sync'
-    `mv #{remote_dir}/TESTING/sub_folder/text\\ 456.txt #{remote_dir}/TESTING/sub_folder_2`
+    _mv "#{remote_dir}/TESTING/sub_folder/text 456.txt", "#{remote_dir}/TESTING/sub_folder_2"
     _sync
     _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", [ 'text 456.txt', 'to_delete.txt' ], 'the file test 456.txt is in TESTING/sub_folder_2 after move on the remote and a second sync'
     _assert_dir_contents "#{local_dir}/TESTING/sub_folder", [ 'text 456.txt' ], 'the file test 456.txt is still present in TESTING/sub_folder after second sync (because rsync delete is disabled)'
@@ -162,7 +162,7 @@ class SyncTester
     _mkdir "#{local_dir}/TESTING"
     _sync
     _assert_dir_contents "#{local_dir}/TESTING/sub_folder", [ 'text 456.txt' ], 'the file test 456.txt is present in TESTING/sub_folder after initial sync'
-    `mv #{remote_dir}/TESTING/sub_folder/text\\ 456.txt #{remote_dir}/TESTING/sub_folder_2`
+    _mv "#{remote_dir}/TESTING/sub_folder/text 456.txt", "#{remote_dir}/TESTING/sub_folder_2"
     _sync
     _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", [ 'text 456.txt', 'to_delete.txt' ], 'the file test 456.txt is in TESTING/sub_folder_2 after move on the remote and a second sync'
     _assert_dir_contents "#{local_dir}/TESTING/sub_folder", [], 'the file test 456.txt is no longer present in TESTING/sub_folder after second sync (because rsync delete is enabled)'
@@ -272,6 +272,10 @@ class SyncTester
 
   def _rm(filename)
     `rm #{Shellwords.escape(filename)}`
+  end
+
+  def _mv(source_filename, dest_filename_or_path)
+    `mv #{Shellwords.escape(source_filename)} #{Shellwords.escape(dest_filename_or_path)}`
   end
 
   def _sync
