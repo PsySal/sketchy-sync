@@ -209,7 +209,12 @@ class SyncTester
   end
 
   def _setup_dir_contents(dir, dir_desc)
-    `cp -R #{Shellwords.escape(TESTING_DATA_DIR)}/* #{Shellwords.escape(dir)}`
+    remote_host, dir = _remote_host_and_path dir
+    if remote_host
+      _exec_local("scp -R #{Shellwords.escape(TESTING_DATA_DIR)}/* #{Shellwords.escape(dir)}")
+    else
+      _exec_local("cp -R #{Shellwords.escape(TESTING_DATA_DIR)}/* #{Shellwords.escape(dir)}")
+    end
     _assert_dir_contents dir, ['TESTING', 'TESTING_2'], "#{dir_desc} has expected folders after setup"
     _assert_dir_contents "#{dir}/TESTING/sub_folder/", ['text 456.txt'], "#{dir_desc} has expected files in TESTING/sub_folder after setup"
     _assert_dir_contents_size "#{dir}/TESTING", 7, "#{dir_desc} has expected number of files in TESTING/ after setup"
@@ -278,22 +283,24 @@ class SyncTester
 
   def _file_contents(filename)
     remote_host, filename = _remote_host_and_path filename
-    cat_cmd = "cat #{Shellwords.escape(filename)}"
-    _exec_auto_local_or_remote(remote_host, cat_cmd)
+    _exec_auto_local_or_remote(remote_host, "cat #{Shellwords.escape(filename)}")
   end
 
   def _set_file_contents(filename, contents)
-    File.open(filename, 'w') do |file|
-      file.write(contents)
-    end
+    remote_host, filename = _remote_host_and_path filename
+    _exec_auto_local_or_remote(remote_host, "printf '%s' #{Shellwords.escape(contents)} >#{Shellwords.escape(filename)}")
   end
 
   def _rm(filename)
-    `rm #{Shellwords.escape(filename)}`
+    remote_host, filename = _remote_host_and_path filename
+    _exec_auto_local_or_remote(remote_host, "rm #{Shellwords.escape(filename)}")
   end
 
   def _mv(source_filename, dest_filename_or_path)
-    `mv #{Shellwords.escape(source_filename)} #{Shellwords.escape(dest_filename_or_path)}`
+    source_remote_host, source_filename = _remote_host_and_path source_filename
+    dest_remote_host, dest_filename_or_path = _remote_host_and_path dest_filename_or_path
+    raise "internal: _mv doesn't work across hosts (source #{source_remote_host} != dest #{dest_remote_host})" unless source_remote_host == dest_remote_host
+    _exec_auto_local_or_remote(source_remote_host, "mv #{Shellwords.escape(source_filename)} #{Shellwords.escape(dest_filename_or_path)}")
   end
 
   def _remote_host_and_path(dir_or_filename)
