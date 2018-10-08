@@ -11,6 +11,10 @@ class SyncTester
   TEMP_DIR="#{__dir__}/temp"
 
   def initialize
+    # git can't commit empty folders; add the one in test data here
+    empty_sub_folder = "#{TESTING_DATA_DIR}/TESTING/empty_sub_folder"
+    Dir.mkdir empty_sub_folder unless Dir.exist? empty_sub_folder
+
     [false, true].each do |fast_mode|
       @fast_mode = true # fast_mode
       test_dot_sync_dir_was_initialized
