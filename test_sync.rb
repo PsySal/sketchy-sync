@@ -253,7 +253,8 @@ class SyncTester
   end
 
   def _mkdir(dir)
-    Dir.mkdir(dir)
+    remote_host, dir = _remote_host_and_path dir
+    _exec_auto_local_or_remote(remote_host, "mkdir #{Shellwords.escape(dir)}")
   end
 
   def _dir_exist?(dir)
@@ -267,17 +268,8 @@ class SyncTester
   end
 
   def _dir_contents_recursive(dir)
-    find_cmd = "find . -not -type d -and -not -path \"\./sync\.rb\" -and -not -path \"\./\.sync/*\""
-    remote_host, remote_dir = _remote_host_and_path dir
-    if remote_host
-      contents = _exec_remote(remote_host, "cd #{Shellwords.escape(remote_dir)} && #{find_cmd}")
-    else
-      prev_cwd = Dir.pwd
-      Dir.chdir(dir)
-      contents = _exec_local(find_cmd)
-      Dir.chdir(prev_cwd)
-    end
-    contents.split("\n")
+    remote_host, dir = _remote_host_and_path dir
+    _exec_auto_local_or_remote(remote_host, "cd #{Shellwords.escape(dir)} && find . -not -type d -and -not -path \"\./sync\.rb\" -and -not -path \"\./\.sync/*\"").split("\n")
   end
 
   def _assert_file_contents(filename, contents, desc)
