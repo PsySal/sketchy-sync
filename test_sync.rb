@@ -17,26 +17,31 @@ class SyncTester
     empty_sub_folder = "#{TESTING_DATA_DIR}/TESTING/empty_sub_folder"
     _mkdir empty_sub_folder unless _dir_exist?(empty_sub_folder)
 
-#    @use_remote_temp_dir = true
+    [false, true].each do |use_remote_temp_dir|
+      @use_remote_temp_dir = use_remote_temp_dir
+      [false, true].each do |fast_mode|
+        @fast_mode = fast_mode
 
-    [false, true].each do |fast_mode|
-      @fast_mode = fast_mode
-      test_dot_sync_dir_was_initialized
-      test_up_sync_into_empty_dir
-      test_up_sync_file_changes_locally
-      test_up_sync_immediate_change_to_new_file_from_down_sync
-      test_down_sync_into_empty_dir_folders
-      test_down_sync_file_changes_on_server
-      test_down_sync_file_changes_locally
-      test_down_sync_with_and_without_enable_rsync_delete
-      test_down_sync_file_deleted_locally_restored_after_down_sync
-      test_down_sync_file_moved_remotely_down_sync_file_duplicated # test down sync, file moved on server, down sync, file in both places (rsync delete off)
-      test_down_sync_file_moved_remotely_down_sync_file_moved_enable_rsync_delete # test rsync delete on, down sync, file moved on server, down sync, file moved locally
+        # test failed sync (bad remote host), check db not updated, try again, check db was updated
+        # test pass a path on the commandline, with a slash, make sure it syncs up/down
+
+        test_dot_sync_dir_was_initialized
+        test_up_sync_into_empty_dir
+        test_up_sync_file_changes_locally
+        test_up_sync_immediate_change_to_new_file_from_down_sync
+        test_down_sync_into_empty_dir_folders
+        test_down_sync_file_changes_on_server
+        test_down_sync_file_changes_locally
+        test_down_sync_with_and_without_enable_rsync_delete
+        test_down_sync_file_deleted_locally_restored_after_down_sync
+        test_down_sync_file_moved_remotely_down_sync_file_duplicated # test down sync, file moved on server, down sync, file in both places (rsync delete off)
+        test_down_sync_file_moved_remotely_down_sync_file_moved_enable_rsync_delete # test rsync delete on, down sync, file moved on server, down sync, file moved locally
+      end
+
+      # test fast mode failure case (file contents changed but date not)
+      # test fast mode limit
+      # test fast mode exclude root folders
     end
-
-    # test fast mode failure case (file contents changed but date not)
-    # test fast mode limit
-    # test fast mode exclude root folders
 
     puts
   end
@@ -176,22 +181,17 @@ class SyncTester
 
   def _setup(init_local_dir_contents, init_remote_dir_contents, init_settings = false)
     _mkdir TEMP_DIR unless _dir_exist?(TEMP_DIR)
+    _mkdir REMOTE_TEMP_DIR unless REMOTE_TEMP_DIR.nil? || _dir_exist?(REMOTE_TEMP_DIR)
 
     temp_dir_suffix = "#{Time.now.strftime("%Y-%m-%d")}_#{SecureRandom.hex(4)}"
     local_dir = "#{TEMP_DIR}/local_#{temp_dir_suffix}"
     raise "local temp dir #{local_dir} already exists" if _dir_exist?(local_dir)
     _mkdir local_dir
 
-    if @use_remote_temp_dir
-      remote_dir = "#{REMOTE_TEMP_DIR}/remote_#{temp_dir_suffix}"
-      _dir_exist? remote_dir
-      raise "remote temp dir implemented"
-    else
-      remote_dir = "#{TEMP_DIR}/remote_#{temp_dir_suffix}"
-      raise "remote temp dir #{remote_dir} already exists" if _dir_exist?(remote_dir)
-      _mkdir remote_dir
-    end
-
+    remote_dir_prefix = @use_remote_temp_dir ? REMOTE_TEMP_DIR : TEMP_DIR
+    remote_dir = "#{remote_dir_prefix}/remote_#{temp_dir_suffix}"
+    raise "remote dir #{remote_dir} already exists" if _dir_exist? remote_dir
+    _mkdir remote_dir
     _assert_dir_contents_size local_dir, 0, 'source dir is empty before setup'
     _setup_dir_contents local_dir, 'source dir' if init_local_dir_contents
 
@@ -209,9 +209,9 @@ class SyncTester
   end
 
   def _setup_dir_contents(dir, dir_desc)
-    remote_host, dir = _remote_host_and_path dir
+    remote_host, remote_dir = _remote_host_and_path dir
     if remote_host
-      _exec_local("scp -R #{Shellwords.escape(TESTING_DATA_DIR)}/* #{Shellwords.escape(dir)}")
+      _exec_local("scp -r #{Shellwords.escape(TESTING_DATA_DIR)}/* #{Shellwords.escape(remote_host)}:#{Shellwords.escape(remote_dir)}")
     else
       _exec_local("cp -R #{Shellwords.escape(TESTING_DATA_DIR)}/* #{Shellwords.escape(dir)}")
     end
@@ -231,16 +231,18 @@ class SyncTester
     _save_sync_settings(local_dir, settings)
   end
 
+  def _assert_desc(desc)
+    "(checking #{desc}) (use_remote_temp_dir=#{@use_remote_temp_dir} fast_mode=#{@fast_mode})"
+  end
+
   def _assert_equals(actual, expected, desc)
-    raise "actual #{actual} != expected #{expected} (checking #{desc})" unless actual == expected
-    printf '.'
-    STDOUT.sync
+    raise "actual #{actual} != expected #{expected} #{_assert_desc(desc)}" unless actual == expected
+    printf('.') && STDOUT.sync if _trace_dots?
   end
 
   def _assert_string_match(string, pattern, desc)
-    raise "string #{string} does not contain pattern #{pattern} (checking #{desc})" unless string.match(pattern)
-    printf '.'
-    STDOUT.sync
+    raise "string #{string} does not contain pattern #{pattern} #{_assert_desc(desc)}" unless string.match(pattern)
+    printf('.') && STDOUT.sync if _trace_dots?
   end
 
   def _assert_dirs_match(actual_dir, expected_dir, desc)
@@ -310,10 +312,12 @@ class SyncTester
   end
 
   def _exec_remote(remote_host, remote_cmd)
-    `ssh #{Shellwords.escape(remote_host)} #{Shellwords.escape(remote_cmd)} 2>/dev/null`.chomp
+    puts "ssh #{Shellwords.escape(remote_host)} #{Shellwords.escape(remote_cmd)} 2>/dev/null" if _trace_cmd?
+    `ssh #{Shellwords.escape(remote_host)} #{Shellwords.escape(remote_cmd)} 2>/dev/null`
   end
 
   def _exec_local(cmd)
+    puts "#{cmd} 2>/dev/null" if _trace_cmd?
     `#{cmd} 2>/dev/null`
   end
 
@@ -335,6 +339,14 @@ class SyncTester
 
   def _save_sync_settings(local_dir, settings)
     File.write(_sync_settings_filename(local_dir), settings.to_yaml)
+  end
+
+  def _trace_cmd?
+    false
+  end
+
+  def _trace_dots?
+    true
   end
 end
 
