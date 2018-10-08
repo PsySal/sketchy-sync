@@ -67,9 +67,9 @@ class SyncTester
     local_dir, remote_dir = _setup(true, false, true)
     _sync
     _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello there\n", 'file has expected contents after initial up sync'
-    _set_file_contents "#{local_dir}/TESTING/hello.txt", "hello again\n"
+    _set_file_contents "#{local_dir}/TESTING/hello.txt", "hello again"
     _sync
-    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello again\n", 'file has new contents after second up sync'
+    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello again", 'file has new contents after second up sync'
   end
 
   def test_up_sync_immediate_change_to_new_file_from_down_sync
@@ -77,9 +77,9 @@ class SyncTester
     _mkdir "#{local_dir}/TESTING"
     _sync
     _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello there\n", 'file has expected contents after initial down sync'
-    _set_file_contents "#{local_dir}/TESTING/hello.txt", "hello immediately\n"
+    _set_file_contents "#{local_dir}/TESTING/hello.txt", "hello immediately"
     _sync
-    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello immediately\n", 'dest file has new contents after second sync'
+    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello immediately", 'dest file has new contents after second sync'
   end
 
   def test_down_sync_into_empty_dir_folders
@@ -100,9 +100,9 @@ class SyncTester
     _mkdir "#{local_dir}/TESTING"
     _sync
     _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello there\n", 'hello.txt has expected contents after initial down sync'
-    _set_file_contents "#{remote_dir}/TESTING/hello.txt", "hello again\n"
+    _set_file_contents "#{remote_dir}/TESTING/hello.txt", "hello again"
     _sync
-    _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello again\n", 'hello.txt has new contents after second down sync'
+    _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello again", 'hello.txt has new contents after second down sync'
   end
 
   def test_down_sync_file_changes_locally
@@ -111,13 +111,13 @@ class SyncTester
     _mkdir "#{local_dir}/TESTING"
     _sync
     _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello there\n", 'hello.txt has expected contents after initial down sync'
-    _set_file_contents "#{local_dir}/TESTING/hello.txt", "hello changed\n"
+    _set_file_contents "#{local_dir}/TESTING/hello.txt", "hello changed"
     _sync
-    _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello changed\n", 'hello.txt has new contents locally after second sync'
-    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello changed\n", 'hello.txt has new contents on server after second sync'
+    _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello changed", 'hello.txt has new contents locally after second sync'
+    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello changed", 'hello.txt has new contents on server after second sync'
     _sync
-    _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello changed\n", 'hello.txt has new contents locally after third sync'
-    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello changed\n", 'hello.txt has new contents on server after third sync'
+    _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello changed", 'hello.txt has new contents locally after third sync'
+    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello changed", 'hello.txt has new contents on server after third sync'
   end
 
   def test_down_sync_with_and_without_enable_rsync_delete
