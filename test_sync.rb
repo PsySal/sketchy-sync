@@ -117,7 +117,7 @@ class SyncTester
     _mkdir "#{local_dir}/TESTING"
     _sync
     _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", [ 'to_delete.txt' ], 'the file to_delete.txt is present after initial down sync'
-    `rm #{remote_dir}/TESTING/sub_folder_2/to_delete.txt`
+    _rm "#{remote_dir}/TESTING/sub_folder_2/to_delete.txt"
     _assert_dir_contents "#{remote_dir}/TESTING/sub_folder_2", [], 'the file to_delete.txt was deleted from the remote dir by this test'
     _sync
     _assert_dir_contents "#{remote_dir}/TESTING/sub_folder_2", [], 'the file to_delete.txt is still absent from the remote dir, even after sync'
@@ -136,7 +136,7 @@ class SyncTester
     _mkdir "#{local_dir}/TESTING"
     _sync
     _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", [ 'to_delete.txt' ], 'the file to_delete.txt is present after initial down sync'
-    `rm #{local_dir}/TESTING/sub_folder_2/to_delete.txt`
+    _rm "#{local_dir}/TESTING/sub_folder_2/to_delete.txt"
     _sync
     _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", [ 'to_delete.txt' ], 'the file to_delete.txt was restored after the second sync'
   end
@@ -237,7 +237,7 @@ class SyncTester
   end
 
   def _mkdir(dir)
-    `mkdir #{dir}`
+    `mkdir #{Shellwords.escape(dir)}`
   end
 
   def _dir_contents(dir)
@@ -268,6 +268,10 @@ class SyncTester
     File.open(filename, 'w') do |file|
       file.write(contents)
     end
+  end
+
+  def _rm(filename)
+    `rm #{Shellwords.escape(filename)}`
   end
 
   def _sync
