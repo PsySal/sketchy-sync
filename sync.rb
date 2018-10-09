@@ -371,15 +371,14 @@ class FileSyncDB
   def _get_required_file_shas(puts_prefix, all_file_stats)
     is_root_folder_included = FAST_MODE_INCLUDE_ROOT_FOLDERS.empty? || FAST_MODE_INCLUDE_ROOT_FOLDERS.include?(@folder_name)
     is_root_folder_excluded = FAST_MODE_EXCLUDE_ROOT_FOLDERS.include?(@folder_name)
-    calculate_shas = !FAST_MODE || (is_root_folder_included && !is_root_folder_excluded)
-
+    use_fast_mode = FAST_MODE && is_root_folder_included && !is_root_folder_excluded
     all_sha_filenames =
-      if calculate_shas
-        puts "#{puts_prefix}: ! computing full sha signatures for folder #{@folder_name}"
-        all_file_stats.keys
-      else
+      if use_fast_mode
         puts "#{puts_prefix}: ! skipping sha calculations for folder #{@folder_name}"
         []
+      else
+        puts "#{puts_prefix}: ! computing full sha signatures for folder #{@folder_name}"
+        all_file_stats.keys
       end
 
     get_file_shas(puts_prefix, all_sha_filenames)
