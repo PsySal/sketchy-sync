@@ -353,7 +353,6 @@ class SyncTester
   end
 
   def _rm(filename)
-    sleep 1
     remote_host, filename = _remote_host_and_path filename
     _exec_auto_local_or_remote(remote_host, "rm #{Shellwords.escape(filename)}")
   end
