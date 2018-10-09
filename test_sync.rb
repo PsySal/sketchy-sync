@@ -110,14 +110,14 @@ class SyncTester
     settings = _load_sync_settings(local_dir)
     settings['upstream_folder'] = "user@example.com/temp"
     _save_sync_settings(local_dir, settings)
-    _set_file_contents "#{local_dir}/TESTING/hello.txt", "this file will take two syncs to upload\n"
+    _set_file_contents "#{local_dir}/TESTING/hello.txt", "this file will take two syncs to upload"
     _sync
     _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello there\n", 'remote file is unchanged after failed sync'
     settings = _load_sync_settings(local_dir)
     settings['upstream_folder'] = remote_dir
     _save_sync_settings(local_dir, settings)
     _sync
-    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "this file will take two syncs to upload\n", 'remote file is unchanged after failed sync'
+    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "this file will take two syncs to upload", 'remote file is unchanged after failed sync'
   end
 
   def test_up_sync_immediate_change_to_new_file_from_down_sync
