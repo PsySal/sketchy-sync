@@ -52,15 +52,13 @@ unless File.directory?(DOT_SYNC_FOLDER)
       # - if turned on, the fast mode limit will be in effect
       fast_mode: No
 
-      # if fast mode is enabled, this can be used to specify excluded root folders
-      # - folders listed here will never sync using fast mode
+      # if fast mode is enabled, this can be used to specify included and excluded root folders
+      # - fast_mode_include_root_folders contains the folders to sync using fast mode; if empty, all will be synced this way
+      # - fast_mode_exclude_root_folders contains any folders to NOT sync using fast mode; overrides fast_mode_include_root_folders
       # - only valid for root folders
       # - e.g., [ "my_folder", "my_other_folder" ]
+      fast_mode_include_root_folders: []
       fast_mode_exclude_root_folders: []
-
-      # if fast mode is enabled, this is the limit in mb to enable it for
-      # - a limit of 0 means to use fast mode for all files
-      fast_mode_file_size_limit_mb: 10
 
       # this tells sync.rb that you have configured this file
       # - set it to Yes once you've configured this file
@@ -91,8 +89,8 @@ RSYNC_DRY_RUN = settings['rsync_dry_run'] ? '-n' : ''
 RSYNC_DELETE = settings['rsync_delete'] ? '--delete' : ''
 RSYNC_PROGRESS = settings['rsync_progress'] ? '--progress' : ''
 FAST_MODE = settings['fast_mode']
+FAST_MODE_INCLUDE_ROOT_FOLDERS = settings['fast_mode_exclude_root_folders']
 FAST_MODE_EXCLUDE_ROOT_FOLDERS = settings['fast_mode_exclude_root_folders']
-FAST_MODE_FILE_SIZE_LIMIT = settings['fast_mode_file_size_limit_mb'].to_i * 1024 * 1024
 SETTINGS_ARE_SET = (settings['settings_are_set'] == true)
 
 # check settings
@@ -369,21 +367,20 @@ class FileSyncDB
   end
 
   # calculate all shas for required files, given an input file stats map
-  # - if FAST_MODE is not set, or this folder is in FAST_MODE_EXCLUDE_ROOT_DIRS, then this will be all files
-  # - otherwise, this will be all files smaller than FAST_MODE_FILE_SIZE_LIMIT
+  # - this depends on the include/exclude root folders
   def _get_required_file_shas(puts_prefix, all_file_stats)
-    all_sha_filenames = []
-    if !FAST_MODE || FAST_MODE_EXCLUDE_ROOT_FOLDERS.include?(@folder_name)
-      puts "#{puts_prefix}: ! computing full sha signatures for folder #{@folder_name}"
-      all_sha_filenames = all_file_stats.keys
-    else
-      puts "#{puts_prefix}: ! computing partial sha signatures for folder #{@folder_name}"
-      all_file_stats.each do |filename, stats|
-        if stats.size < FAST_MODE_FILE_SIZE_LIMIT
-          all_sha_filenames << filename
-        end
+    is_root_folder_included = FAST_MODE_INCLUDE_ROOT_FOLDERS.empty? || FAST_MODE_INCLUDE_ROOT_FOLDERS.include?(@folder_name)
+    is_root_folder_excluded = FAST_MODE_EXCLUDE_ROOT_FOLDERS.include?(@folder_name)
+    calculate_shas = !FAST_MODE || (is_root_folder_included && !is_root_folder_excluded)
+
+    all_sha_filenames =
+      if calculate_shas
+        puts "#{puts_prefix}: ! computing full sha signatures for folder #{@folder_name}"
+        all_file_stats.keys
+      else
+        puts "#{puts_prefix}: ! skipping sha calculations for folder #{@folder_name}"
+        []
       end
-    end
 
     get_file_shas(puts_prefix, all_sha_filenames)
   end
