@@ -202,7 +202,7 @@ end
 class FileSyncDB
   def initialize(folder_name)
     @folder_name = folder_name
-    @file_info_filename = "#{DOT_SYNC_FOLDER}/#{folder_name}_info.txt"
+    @file_info_filename = "#{DOT_SYNC_FOLDER}/#{folder_name}_info.yaml"
     @file_info = {} # map filename => { 'sync_ts' => timestamp, 'sha256' => sha256 }
 
     # if the info file exists, load it
@@ -478,7 +478,7 @@ def sync_folder(puts_prefix, folder_name)
   sync_ts = Time.now.to_i
 
   # create a lock file in .sync
-  folder_lockfile = "#{DOT_SYNC_FOLDER}/#{folder_name}_lock.txt"
+  folder_lockfile = "#{DOT_SYNC_FOLDER}/#{folder_name}.lock"
   if File.exist?(folder_lockfile)
     puts "#{puts_prefix}:💀  ERROR: folder lockfile #{folder_lockfile} exists; not syncing this folder."
     return false
