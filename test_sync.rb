@@ -100,6 +100,7 @@ class SyncTester
     _mkdir "#{local_dir}/TESTING"
     _sync
     _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello there\n", 'hello.txt has expected contents after initial down sync'
+    sleep 1 # XXX note: rsync --update will only pull NEWER files; this means if we modify the remote too soon after it was down synced, this test will fail
     _set_file_contents "#{remote_dir}/TESTING/hello.txt", "hello again"
     _sync
     _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello again", 'hello.txt has new contents after second down sync'
@@ -111,6 +112,7 @@ class SyncTester
     _mkdir "#{local_dir}/TESTING"
     _sync
     _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello there\n", 'hello.txt has expected contents after initial down sync'
+    sleep 1 # XXX see note on {test_down_sync_file_changes_on_server}
     _set_file_contents "#{local_dir}/TESTING/hello.txt", "hello changed"
     _sync
     _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello changed", 'hello.txt has new contents locally after second sync'
