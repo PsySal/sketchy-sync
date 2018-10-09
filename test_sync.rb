@@ -284,7 +284,6 @@ class SyncTester
     settings['sleep_time'] = 0
     settings['rsync_dry_run'] = false
     settings['fast_mode'] = @fast_mode
-    settings['fast_mode_file_size_limit_mb'] = 0
     settings['settings_are_set'] = true
     _save_sync_settings(local_dir, settings)
   end
