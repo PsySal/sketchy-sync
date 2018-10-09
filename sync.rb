@@ -229,7 +229,7 @@ class FileSyncDB
   end
 
   # determine a list of files to update, and update our file info accordingly so it can be saved for the next run
-  def update_file_info_and_find_all_files_to_up_sync!(puts_prefix)
+  def update_file_info_and_find_all_files_to_up_sync!(puts_prefix, sync_ts)
     # get a list of everything in this folder, and select only those that need to be sync'd
     all_file_stats = {}
     _find_all_file_stats(@folder_name, all_file_stats)
@@ -253,8 +253,8 @@ class FileSyncDB
         elsif sha256
           # we have a sha256, so only update if it doesn't match what we have in our file info
           sha256 != file_info_line['sha256']
-        elsif stats['update_ts'] >= file_info_line['sync_ts']
-          # timestamp is newer on the actual file than in our info line, so update
+        elsif stats['update_ts'] > file_info_line['sync_ts']
+          # timestamp is strictly newer on the actual file than in our info line, so update
           true
         else
           false
@@ -263,7 +263,7 @@ class FileSyncDB
     end
 
     # update our file info; update sync time to be now, and sha256 if we have it
-    sync_ts = Time.now.to_i
+    puts "setting supsync time #{sync_ts}"
     all_file_stats.each do |filename, stats|
       file_info_line = @file_info[filename]
       unless file_info_line
@@ -285,14 +285,14 @@ class FileSyncDB
 
   # refresh everything for files newer than the given timestamp
   # - this is intended for use after down sync, to update the file sync db with any downloaded files
-  def update_file_info_after_down_sync!(puts_prefix, down_sync_ts)
+  def update_file_info_after_down_sync!(puts_prefix, sync_ts)
     all_file_stats = {}
     _find_all_file_stats(@folder_name, all_file_stats)
 
     # choose only the newly downloaded or updated files
     new_file_stats = {}
     all_file_stats.each do |filename, stats|
-      if stats['update_ts'] >= down_sync_ts
+      if stats['update_ts'] >= sync_ts
         new_file_stats[filename] = stats
       end
     end
@@ -312,7 +312,7 @@ class FileSyncDB
       file_info_line['sha256'] = all_shas[filename]
 
       # set the sync ts to the file update ts
-      file_info_line['sync_ts'] = stats['update_ts']
+      file_info_line['sync_ts'] = sync_ts # stats['update_ts']
     end
   end
 
@@ -397,9 +397,9 @@ end
 # @param file_sync_db [FileSyncDB] the file sync db object for this folder
 # @return [Boolean] true if the folder was up-sync'd successfully, false
 #   otherwise
-def sync_folder_up(puts_prefix, folder_name, file_sync_db)
+def sync_folder_up(puts_prefix, folder_name, file_sync_db, sync_ts)
   # get all files nwer than the given date
-  rsync_files = file_sync_db.update_file_info_and_find_all_files_to_up_sync!(puts_prefix)
+  rsync_files = file_sync_db.update_file_info_and_find_all_files_to_up_sync!(puts_prefix, sync_ts)
 
   # start syncing
   puts "#{puts_prefix}: △ Up-syncing #{rsync_files.size} files"
@@ -452,9 +452,7 @@ end
 #
 # @param folder_name [String] the folder name to sync
 # @return [Boolean] true if folder was down-sync'd, false otherwise
-def sync_folder_down(puts_prefix, folder_name, file_sync_db)
-  before_rsync_ts = Time.now.to_i
-
+def sync_folder_down(puts_prefix, folder_name, file_sync_db, sync_ts)
   rsync_upstream_folder = Shellwords.escape("#{UPSTREAM_FOLDER}/#{folder_name}")
   rsync_cmd = "rsync #{RSYNC_DRY_RUN} #{RSYNC_PROGRESS} #{RSYNC_DELETE} --update --exclude \"\\.*\" --compress --recursive --times --perms --links \"#{rsync_upstream_folder}\" ."
   puts "#{puts_prefix}: ▼ #{rsync_cmd}"
@@ -466,7 +464,7 @@ def sync_folder_down(puts_prefix, folder_name, file_sync_db)
 
   # refresh the file sync db with any updated files;
   # - note we do this regardless the downsync status, because we always want to be up to date here
-  file_sync_db.update_file_info_after_down_sync!(puts_prefix, before_rsync_ts)
+  file_sync_db.update_file_info_after_down_sync!(puts_prefix, sync_ts)
   file_sync_db.save_file_info
 
   rsync_status.success?
@@ -479,6 +477,8 @@ end
 # - we keep track of a sync lockfile and timefile in a special .sync/ folder
 def sync_folder(puts_prefix, folder_name)
   puts "#{puts_prefix}:🔒  creating lockfile"
+
+  sync_ts = Time.now.to_i
 
   # create a lock file in .sync
   folder_lockfile = "#{DOT_SYNC_FOLDER}/#{folder_name}_lock.txt"
@@ -498,13 +498,13 @@ def sync_folder(puts_prefix, folder_name)
   file_sync_db = FileSyncDB.new(folder_name)
 
   # sync them up
-  rsync_up_succeeded = sync_folder_up(puts_prefix, folder_name, file_sync_db)
+  rsync_up_succeeded = sync_folder_up(puts_prefix, folder_name, file_sync_db, sync_ts)
 
   # sync down, but only if there were no errors syncing up
   unless rsync_up_succeeded
     puts "#{puts_prefix}:💀  WARNING: rsync failed while up-syncing; not syncing this folder down."
   else
-    rsync_down_succeeded = sync_folder_down(puts_prefix, folder_name, file_sync_db)
+    rsync_down_succeeded = sync_folder_down(puts_prefix, folder_name, file_sync_db, sync_ts)
 
     if rsync_down_succeeded
       puts "#{puts_prefix}:✅  Down-sync suceeded; files are up-to-date."
