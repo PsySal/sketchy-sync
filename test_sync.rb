@@ -347,12 +347,14 @@ class SyncTester
   end
 
   def _set_file_contents(filename, contents)
-    sleep 1 # XXX limitation of our scheme is we can't detect files changed within a second of syncing; make sure we don't hit that in tests
+    sleep 2 if @fast_mode # XXX limitation of our scheme is we can't detect files changed within a second of syncing; make sure we don't hit that in tests
     remote_host, filename = _remote_host_and_path filename
     _exec_auto_local_or_remote(remote_host, "printf '%s' #{Shellwords.escape(contents)} >#{Shellwords.escape(filename)}")
+    sleep 2 if @fast_mode # XXX we need to guard this change from a sync before OR after
   end
 
   def _rm(filename)
+    sleep 1
     remote_host, filename = _remote_host_and_path filename
     _exec_auto_local_or_remote(remote_host, "rm #{Shellwords.escape(filename)}")
   end
@@ -400,7 +402,9 @@ class SyncTester
   end
 
   def _sync(raw_args = '')
-    `./sync.rb #{raw_args}`
+    s = `./sync.rb #{raw_args}`
+    puts s if _trace_cmd?
+    s
   end
 
   def _sync_settings_filename(local_dir)
@@ -420,7 +424,7 @@ class SyncTester
   end
 
   def _trace_dots?
-    true
+    !_trace_cmd?
   end
 end
 
