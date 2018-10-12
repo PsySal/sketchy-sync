@@ -20,33 +20,33 @@ class SyncTester
 
     # ssh session management; we'll map remote_host (String) to an ssh session, and allocate as needed in _exec_remote
     @remote_ssh_sessions = {}
+    @fast_mode = false
+#    [false, true].each do |use_remote_temp_dir|
+#      @use_remote_temp_dir = use_remote_temp_dir
+#      [false, true].each do |fast_mode|
+#        @fast_mode = fast_mode
 
-    [false, true].each do |use_remote_temp_dir|
-      @use_remote_temp_dir = use_remote_temp_dir
-      [false, true].each do |fast_mode|
-        @fast_mode = fast_mode
-
-        test_dot_sync_dir_was_initialized
-        test_up_sync_pass_path_on_cmdline
-        test_up_sync_into_empty_dir
-        test_up_sync_file_changes_locally
-        test_up_sync_failed_retry_succeeded
-        test_up_sync_file_changed_locally_failed_retry_succeeded
-        test_up_sync_immediate_change_to_new_file_from_down_sync
-        test_down_sync_pass_path_on_cmdline
-        test_down_sync_into_empty_dir_folders
-        test_down_sync_file_changes_on_server
-        test_down_sync_file_changes_locally
+#        test_dot_sync_dir_was_initialized
+#        test_up_sync_pass_path_on_cmdline
+#        test_up_sync_into_empty_dir
+#        test_up_sync_file_changes_locally
+#        test_up_sync_failed_retry_succeeded
+#        test_up_sync_file_changed_locally_failed_retry_succeeded
+#        test_up_sync_immediate_change_to_new_file_from_down_sync
+#        test_down_sync_pass_path_on_cmdline
+#        test_down_sync_into_empty_dir_folders
+#        test_down_sync_file_changes_on_server
+#        test_down_sync_file_changes_locally
         test_down_sync_with_and_without_enable_rsync_delete
-        test_down_sync_file_deleted_locally_restored_after_down_sync
-        test_down_sync_file_moved_remotely_down_sync_file_duplicated # test down sync, file moved on server, down sync, file in both places (rsync delete off)
-        test_down_sync_file_moved_remotely_down_sync_file_moved_enable_rsync_delete # test rsync delete on, down sync, file moved on server, down sync, file moved locally
-      end
+#        test_down_sync_file_deleted_locally_restored_after_down_sync
+#        test_down_sync_file_moved_remotely_down_sync_file_duplicated # test down sync, file moved on server, down sync, file in both places (rsync delete off)
+#        test_down_sync_file_moved_remotely_down_sync_file_moved_enable_rsync_delete # test rsync delete on, down sync, file moved on server, down sync, file moved locally
+#      end
 
       # test fast mode failure case (file contents changed but date not)
       # test fast mode limit
       # test fast mode exclude root folders
-    end
+#    end
 
     puts
   end
@@ -402,6 +402,20 @@ class SyncTester
   def _sync(raw_args = '')
     s = `./sync.rb #{raw_args}`
     puts s if _trace_cmd?
+
+    # as long as this wasn't the first run to create skeletal sync_settings.txt, make sure fast mode affected calculated shas as expected
+    unless s.match? 'please edit .sync/sync_settings.txt'
+      skipped_shas = s.match? 'skipping sha calculations'
+      calculated_shas = s.match? 'computing full sha signatures'
+      if @fast_mode
+        _assert_equals true, skipped_shas, 'sha calculations should be skipped because fast mode is enabled'
+        _assert_equals false, calculated_shas, 'full sha signatures should not be calculated because fast mode is enabled'
+      else
+        _assert_equals false, skipped_shas, 'sha calculations should not be skipped because fast mode is not enabled'
+        _assert_equals true, calculated_shas, 'full sha signatures should be calculated because fast mode is not enabled'
+      end
+    end
+
     s
   end
 
@@ -418,7 +432,7 @@ class SyncTester
   end
 
   def _trace_cmd?
-    false
+    true
   end
 
   def _trace_dots?
