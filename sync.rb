@@ -254,7 +254,6 @@ class FileSyncDB
           sha256 != file_info_line['sha256']
         elsif stats['mtime'] > file_info_line['sync_ts']
           # timestamp is strictly newer on the actual file than in our info line, so update
-          puts "timestamp is strictly newer than sync time; updating"
           true
         else
           false
