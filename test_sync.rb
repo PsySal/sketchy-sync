@@ -7,11 +7,15 @@ require 'shellwords'
 require 'tmpdir'
 require 'yaml'
 
+class SyncTesterRetryError < Exception; end
+class SyncTesterFailedAssertionError < Exception; end
+
 class SyncTester
   SYNC_RB="#{__dir__}/sync.rb"
   TESTING_DATA_DIR="#{__dir__}/test_data"
   TEMP_DIR="#{__dir__}/temp"
   REMOTE_TEMP_DIR="calvin@musicbox:/Users/calvin/Temp"
+  MAX_RETRIES_PER_TEST = 2
 
   def initialize
     # git can't commit empty folders; add the one in test data here
@@ -20,35 +24,47 @@ class SyncTester
 
     # ssh session management; we'll map remote_host (String) to an ssh session, and allocate as needed in _exec_remote
     @remote_ssh_sessions = {}
-    @fast_mode = false
-#    [false, true].each do |use_remote_temp_dir|
-#      @use_remote_temp_dir = use_remote_temp_dir
-#      [false, true].each do |fast_mode|
-#        @fast_mode = fast_mode
 
-#        test_dot_sync_dir_was_initialized
-#        test_up_sync_pass_path_on_cmdline
-#        test_up_sync_into_empty_dir
-#        test_up_sync_file_changes_locally
-#        test_up_sync_failed_retry_succeeded
-#        test_up_sync_file_changed_locally_failed_retry_succeeded
-#        test_up_sync_immediate_change_to_new_file_from_down_sync
-#        test_down_sync_pass_path_on_cmdline
-#        test_down_sync_into_empty_dir_folders
-#        test_down_sync_file_changes_on_server
-#        test_down_sync_file_changes_locally
-        test_down_sync_with_and_without_enable_rsync_delete
-#        test_down_sync_file_deleted_locally_restored_after_down_sync
-#        test_down_sync_file_moved_remotely_down_sync_file_duplicated # test down sync, file moved on server, down sync, file in both places (rsync delete off)
-#        test_down_sync_file_moved_remotely_down_sync_file_moved_enable_rsync_delete # test rsync delete on, down sync, file moved on server, down sync, file moved locally
-#      end
+    test_methods = methods.select { |method_sym| method_sym.to_s.start_with? 'test_' }
+    test_methods.shuffle!
+
+    failed_tests = []
+    retried_tests = []
+
+    [false, true].each do |use_remote_temp_dir|
+      @use_remote_temp_dir = use_remote_temp_dir
+      [false, true].each do |fast_mode|
+        @fast_mode = fast_mode
+        test_methods.each do |test_method|
+          retry_counter = MAX_RETRIES_PER_TEST
+          loop do
+            begin
+              self.send test_method
+              break
+            rescue SyncTesterFailedAssertionError => e
+              failed_tests << "#{test_method} (#{e})"
+              printf('F') && STDOUT.sync if _trace_dots?
+            rescue SyncTesterRetryError => e
+              retried_tests << "#{test_method} (#{e})"
+              printf('R') && STDOUT.sync if _trace_dots?
+              retry_counter -= 1
+              raise "ran out of test retries in #{test_method}; #{e}" if 0 == retry_counter
+            end
+          end
+        end
+      end
 
       # test fast mode failure case (file contents changed but date not)
       # test fast mode limit
       # test fast mode exclude root folders
-#    end
+    end
 
     puts
+
+    puts "retried tests: "
+    retried_tests.reduce(:puts)
+    puts "failed tests:"
+    failed_tests.reduce(:puts)
   end
 
   def test_dot_sync_dir_was_initialized
@@ -256,7 +272,8 @@ class SyncTester
     _assert_dir_contents_size remote_dir, 0, 'dest dir is empty before setup'
     _setup_dir_contents remote_dir, 'dest dir' if init_remote_dir_contents
 
-    `cp #{Shellwords.escape(SYNC_RB)} #{Shellwords.escape(local_dir)}`
+#    `cp #{Shellwords.escape(SYNC_RB)} #{Shellwords.escape(local_dir)}`
+    _exec_local("cp -R #{Shellwords.escape(SYNC_RB)} #{Shellwords.escape(local_dir)}")
     Dir.chdir(local_dir)
     sync_output = _sync
     _assert_string_match sync_output, 'ERROR: please edit .sync/sync_settings.txt', 'first-run .sync dir setup'
@@ -288,17 +305,19 @@ class SyncTester
     _save_sync_settings(local_dir, settings)
   end
 
-  def _assert_desc(desc)
-    "(checking #{desc}) (use_remote_temp_dir=#{@use_remote_temp_dir} fast_mode=#{@fast_mode})"
+  def _assert_desc(desc = nil)
+    checking_desc = desc ? "(checking #{desc}) " : ''
+    state_desc = "(use_remote_temp_dir=#{@use_remote_temp_dir} fast_mode=#{@fast_mode})"
+    checking_desc + state_desc
   end
 
   def _assert_equals(actual, expected, desc)
-    raise "actual #{actual} != expected #{expected} #{_assert_desc(desc)}" unless actual == expected
+    raise SyncTesterFailedAssertionError, "actual #{actual} != expected #{expected} #{_assert_desc(desc)}" unless actual == expected
     printf('.') && STDOUT.sync if _trace_dots?
   end
 
   def _assert_string_match(string, pattern, desc)
-    raise "string #{string} does not contain pattern #{pattern} #{_assert_desc(desc)}" unless string.match(pattern)
+    raise SyncTesterFailedAssertionError, "string #{string} does not contain pattern #{pattern} #{_assert_desc(desc)}" unless string.match(pattern)
     printf('.') && STDOUT.sync if _trace_dots?
   end
 
@@ -400,11 +419,16 @@ class SyncTester
   end
 
   def _sync(raw_args = '')
+    sleep 5 if @use_remote_temp_dir
     s = `./sync.rb #{raw_args}`
     puts s if _trace_cmd?
 
+    if s.match? 'Connection refused'
+      raise SyncTesterRetryError, "internal: sync encountered connection refused; re-running current test #{_assert_desc}"
+    end
+
     # as long as this wasn't the first run to create skeletal sync_settings.txt, make sure fast mode affected calculated shas as expected
-    unless s.match? 'please edit .sync/sync_settings.txt'
+    unless s.empty? || s.match?('please edit .sync/sync_settings.txt')
       skipped_shas = s.match? 'skipping sha calculations'
       calculated_shas = s.match? 'computing full sha signatures'
       if @fast_mode
@@ -432,7 +456,7 @@ class SyncTester
   end
 
   def _trace_cmd?
-    true
+    false
   end
 
   def _trace_dots?
