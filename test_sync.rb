@@ -17,8 +17,8 @@ class SyncTester
   REMOTE_TEMP_DIR="calvin@musicbox:/Users/calvin/Temp"
   MAX_RETRIES_PER_TEST = 5
   RETRY_DELAY_S = 5
-  SYNC_REMOTE_SLEEP_DELAY_S = 0
-  SET_FILE_CONTENTS_FAST_MODE_SLEEP_DELAY_S = 1
+  SYNC_REMOTE_SLEEP_DELAY_S = 0 # can be 0; set to higher numbers to reduce the number of retries due to remote host ssh throttling
+  SET_FILE_CONTENTS_FAST_MODE_SLEEP_DELAY_S = 1 # should be at least 1; this is a limitation of using mtime, atime, and rsync
 
   def initialize
     # git can't commit empty folders; add the one in test data here
@@ -47,9 +47,10 @@ class SyncTester
             rescue SyncTesterFailedAssertionError => e
               failed_tests << "#{test_method} (#{e})"
               _dot 'F'
+              break
             rescue SyncTesterRetryError => e
               retry_counter -= 1
-              raise "ran out of test retries in #{test_method}; #{e}" if 0 == retry_counter
+              raise "ran out of test retries in #{test_method} (#{e})" if 0 == retry_counter
               sleep RETRY_DELAY_S
               retried_tests << "#{test_method} (#{e})"
               _dot 'r'
@@ -64,8 +65,8 @@ class SyncTester
     end
 
     puts
-    puts 'retried tests:' and retried_tests.reduce(:puts) unless retried_tests.empty?
-    puts 'failed tests:' and failed_tests.reduce(:puts) unless failed_tests.empty?
+    (['retried tests:'] + retried_tests).reduce(:puts) unless retried_tests.empty?
+    (['failed tests:'] + failed_tests).reduce(:puts) unless failed_tests.empty?
   end
 
   def test_dot_sync_dir_was_initialized
