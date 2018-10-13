@@ -15,7 +15,10 @@ class SyncTester
   TESTING_DATA_DIR="#{__dir__}/test_data"
   TEMP_DIR="#{__dir__}/temp"
   REMOTE_TEMP_DIR="calvin@musicbox:/Users/calvin/Temp"
-  MAX_RETRIES_PER_TEST = 2
+  MAX_RETRIES_PER_TEST = 5
+  RETRY_DELAY_S = 5
+  SYNC_REMOTE_SLEEP_DELAY_S = 0
+  SET_FILE_CONTENTS_FAST_MODE_SLEEP_DELAY_S = 1
 
   def initialize
     # git can't commit empty folders; add the one in test data here
@@ -45,10 +48,11 @@ class SyncTester
               failed_tests << "#{test_method} (#{e})"
               _dot 'F'
             rescue SyncTesterRetryError => e
-              retried_tests << "#{test_method} (#{e})"
-              _dot 'r'
               retry_counter -= 1
               raise "ran out of test retries in #{test_method}; #{e}" if 0 == retry_counter
+              sleep RETRY_DELAY_S
+              retried_tests << "#{test_method} (#{e})"
+              _dot 'r'
             end
           end
         end
@@ -60,8 +64,8 @@ class SyncTester
     end
 
     puts
-    puts 'retried tests:' && retried_tests.reduce(:puts) unless retried_tests.empty?
-    puts 'failed tests:' && failed_tests.reduce(:puts) unless failed_tests.empty?
+    puts 'retried tests:' and retried_tests.reduce(:puts) unless retried_tests.empty?
+    puts 'failed tests:' and failed_tests.reduce(:puts) unless failed_tests.empty?
   end
 
   def test_dot_sync_dir_was_initialized
@@ -362,10 +366,10 @@ class SyncTester
   end
 
   def _set_file_contents(filename, contents)
-    sleep 2 if @fast_mode # XXX limitation of our scheme is we can't detect files changed within a second of syncing; make sure we don't hit that in tests
+    sleep SET_FILE_CONTENTS_FAST_MODE_SLEEP_DELAY_S if @fast_mode # XXX limitation of our scheme is we can't detect files changed within a second of syncing; make sure we don't hit that in tests
     remote_host, filename = _remote_host_and_path filename
     _exec_auto_local_or_remote(remote_host, "printf '%s' #{Shellwords.escape(contents)} >#{Shellwords.escape(filename)}")
-    sleep 2 if @fast_mode # XXX we need to guard this change from a sync before OR after
+    sleep SET_FILE_CONTENTS_FAST_MODE_SLEEP_DELAY_S if @fast_mode # XXX we need to guard this change from a sync before OR after
   end
 
   def _rm(filename)
@@ -416,7 +420,7 @@ class SyncTester
   end
 
   def _sync(raw_args = '')
-    sleep 5 if @use_remote_temp_dir
+    sleep SYNC_REMOTE_SLEEP_DELAY_S if @use_remote_temp_dir
     s = `./sync.rb #{raw_args}`
     puts s if _trace_cmd?
 
