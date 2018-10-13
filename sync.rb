@@ -89,7 +89,7 @@ RSYNC_DRY_RUN = settings['rsync_dry_run'] ? '-n' : ''
 RSYNC_DELETE = settings['rsync_delete'] ? '--delete' : ''
 RSYNC_PROGRESS = settings['rsync_progress'] ? '--progress' : ''
 FAST_MODE = settings['fast_mode']
-FAST_MODE_INCLUDE_ROOT_FOLDERS = settings['fast_mode_exclude_root_folders']
+FAST_MODE_INCLUDE_ROOT_FOLDERS = settings['fast_mode_include_root_folders']
 FAST_MODE_EXCLUDE_ROOT_FOLDERS = settings['fast_mode_exclude_root_folders']
 SETTINGS_ARE_SET = (settings['settings_are_set'] == true)
 
