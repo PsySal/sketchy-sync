@@ -43,10 +43,10 @@ class SyncTester
               break
             rescue SyncTesterFailedAssertionError => e
               failed_tests << "#{test_method} (#{e})"
-              printf('F') && STDOUT.sync if _trace_dots?
+              _dot 'F'
             rescue SyncTesterRetryError => e
               retried_tests << "#{test_method} (#{e})"
-              printf('R') && STDOUT.sync if _trace_dots?
+              _dot 'r'
               retry_counter -= 1
               raise "ran out of test retries in #{test_method}; #{e}" if 0 == retry_counter
             end
@@ -60,11 +60,8 @@ class SyncTester
     end
 
     puts
-
-    puts "retried tests: "
-    retried_tests.reduce(:puts)
-    puts "failed tests:"
-    failed_tests.reduce(:puts)
+    puts 'retried tests:' && retried_tests.reduce(:puts) unless retried_tests.empty?
+    puts 'failed tests:' && failed_tests.reduce(:puts) unless failed_tests.empty?
   end
 
   def test_dot_sync_dir_was_initialized
@@ -313,12 +310,12 @@ class SyncTester
 
   def _assert_equals(actual, expected, desc)
     raise SyncTesterFailedAssertionError, "actual #{actual} != expected #{expected} #{_assert_desc(desc)}" unless actual == expected
-    printf('.') && STDOUT.sync if _trace_dots?
+    _dot '.'
   end
 
   def _assert_string_match(string, pattern, desc)
     raise SyncTesterFailedAssertionError, "string #{string} does not contain pattern #{pattern} #{_assert_desc(desc)}" unless string.match(pattern)
-    printf('.') && STDOUT.sync if _trace_dots?
+    _dot '.'
   end
 
   def _assert_dirs_match(actual_dir, expected_dir, desc)
@@ -453,6 +450,10 @@ class SyncTester
 
   def _save_sync_settings(local_dir, settings)
     File.write(_sync_settings_filename(local_dir), settings.to_yaml)
+  end
+
+  def _dot(dot)
+    printf(dot) && STDOUT.sync if _trace_dots?
   end
 
   def _trace_cmd?
