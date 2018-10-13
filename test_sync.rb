@@ -65,8 +65,8 @@ class SyncTester
     end
 
     puts
-    (['retried tests:'] + retried_tests).reduce(:puts) unless retried_tests.empty?
-    (['failed tests:'] + failed_tests).reduce(:puts) unless failed_tests.empty?
+    (['retried tests:'] + retried_tests).each { |s| puts s } unless retried_tests.empty?
+    (['failed tests:'] + failed_tests).each { |s| puts s } unless failed_tests.empty?
   end
 
   def test_dot_sync_dir_was_initialized
