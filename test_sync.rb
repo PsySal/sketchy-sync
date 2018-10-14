@@ -19,7 +19,7 @@ class SyncTester
   RETRY_DELAY_S = 5
   SYNC_REMOTE_SLEEP_DELAY_S = 0 # can be 0; set to higher numbers to reduce the number of retries due to remote host ssh throttling
   SET_FILE_CONTENTS_FAST_MODE_SLEEP_DELAY_S = 1 # should be at least 1; this is a limitation of using mtime, atime, and rsync
-  DEBUG_VERBOSE = true # set to true for verbose output from tests
+  DEBUG_VERBOSE = false # set to true for verbose output from tests
 
   def initialize
     # git can't commit empty folders; add the one in test data here
@@ -33,11 +33,8 @@ class SyncTester
     @failed_tests = []
     @retried_tests = []
 
-    @fast_mode = true
-    _run_test :test_up_sync_add_file_locally_with_old_mtime
-
     # run all methods starting with test_
-    test_methods = [] # methods.select { |method_sym| method_sym.to_s.start_with? 'test_' }
+    test_methods = methods.select { |method_sym| method_sym.to_s.start_with? 'test_' }
     test_methods.shuffle!
     [false, true].each do |use_remote_temp_dir|
       @use_remote_temp_dir = use_remote_temp_dir
