@@ -31,31 +31,16 @@ class SyncTester
     test_methods = methods.select { |method_sym| method_sym.to_s.start_with? 'test_' }
     test_methods.shuffle!
 
-    failed_tests = []
-    retried_tests = []
+    _run_test
 
+    @failed_tests = []
+    @retried_tests = []
     [false, true].each do |use_remote_temp_dir|
       @use_remote_temp_dir = use_remote_temp_dir
       [false, true].each do |fast_mode|
         @fast_mode = fast_mode
         test_methods.each do |test_method|
-          retry_counter = MAX_RETRIES_PER_TEST
-          loop do
-            begin
-              self.send test_method
-              break
-            rescue SyncTesterFailedAssertionError => e
-              failed_tests << "#{test_method} (#{e})"
-              _dot 'F'
-              break
-            rescue SyncTesterRetryError => e
-              retry_counter -= 1
-              raise "ran out of test retries in #{test_method} (#{e})" if 0 == retry_counter
-              sleep RETRY_DELAY_S
-              retried_tests << "#{test_method} (#{e})"
-              _dot 'r'
-            end
-          end
+          _run_test test_method, failed_tests, retried_tests
         end
       end
 
@@ -67,8 +52,8 @@ class SyncTester
     end
 
     puts
-    (['retried tests:'] + retried_tests).each { |s| puts s } unless retried_tests.empty?
-    (['failed tests:'] + failed_tests).each { |s| puts s } unless failed_tests.empty?
+    (['retried tests:'] + @retried_tests).each { |s| puts s } unless @retried_tests.empty?
+    (['failed tests:'] + @failed_tests).each { |s| puts s } unless @failed_tests.empty?
   end
 
   def test_dot_sync_dir_was_initialized
@@ -256,6 +241,26 @@ class SyncTester
   end
 
   private
+
+  def _run_test(test_method)
+    retry_counter = MAX_RETRIES_PER_TEST
+    loop do
+      begin
+        self.send test_method
+        break
+      rescue SyncTesterFailedAssertionError => e
+        @failed_tests << "#{test_method} (#{e})"
+        _dot 'F'
+        break
+      rescue SyncTesterRetryError => e
+        retry_counter -= 1
+        raise "ran out of test retries in #{test_method} (#{e})" if 0 == retry_counter
+        sleep RETRY_DELAY_S
+        @retried_tests << "#{test_method} (#{e})"
+        _dot 'r'
+      end
+    end
+  end
 
   def _setup(init_local_dir_contents, init_remote_dir_contents, init_settings = false)
     _mkdir TEMP_DIR unless _dir_exist?(TEMP_DIR)
