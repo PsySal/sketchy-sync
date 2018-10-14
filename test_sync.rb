@@ -62,6 +62,7 @@ class SyncTester
       # test fast mode failure case (file contents changed but date not)
       # test fast mode limit
       # test fast mode exclude root folders
+      # test fast mode - add a new folder locally with an old mtime that doesn't exist on server, make sure it updates
     end
 
     puts
