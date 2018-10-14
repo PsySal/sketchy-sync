@@ -59,6 +59,7 @@ class SyncTester
         end
       end
 
+      # test include/exclude root folders, all modes
       # test fast mode failure case (file contents changed but date not)
       # test fast mode limit
       # test fast mode exclude root folders
