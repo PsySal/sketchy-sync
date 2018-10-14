@@ -19,6 +19,7 @@ class SyncTester
   RETRY_DELAY_S = 5
   SYNC_REMOTE_SLEEP_DELAY_S = 0 # can be 0; set to higher numbers to reduce the number of retries due to remote host ssh throttling
   SET_FILE_CONTENTS_FAST_MODE_SLEEP_DELAY_S = 1 # should be at least 1; this is a limitation of using mtime, atime, and rsync
+  DEBUG_VERBOSE = true # set to true for verbose output from tests
 
   def initialize
     # git can't commit empty folders; add the one in test data here
@@ -28,19 +29,22 @@ class SyncTester
     # ssh session management; we'll map remote_host (String) to an ssh session, and allocate as needed in _exec_remote
     @remote_ssh_sessions = {}
 
-    test_methods = methods.select { |method_sym| method_sym.to_s.start_with? 'test_' }
-    test_methods.shuffle!
-
-    _run_test
-
+    # collect failed and retried tests to report after
     @failed_tests = []
     @retried_tests = []
+
+    @fast_mode = true
+    _run_test :test_up_sync_add_file_locally_with_old_mtime
+
+    # run all methods starting with test_
+    test_methods = [] # methods.select { |method_sym| method_sym.to_s.start_with? 'test_' }
+    test_methods.shuffle!
     [false, true].each do |use_remote_temp_dir|
       @use_remote_temp_dir = use_remote_temp_dir
       [false, true].each do |fast_mode|
         @fast_mode = fast_mode
         test_methods.each do |test_method|
-          _run_test test_method, failed_tests, retried_tests
+          _run_test test_method
         end
       end
 
@@ -135,11 +139,27 @@ class SyncTester
     _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello immediately", 'dest file has new contents after second sync'
   end
 
+  def test_up_sync_add_file_locally_with_old_mtime
+    local_dir, remote_dir = _setup(true, false, true)
+    _sync
+    _assert_dirs_match "#{local_dir}/TESTING", "#{remote_dir}/TESTING", 'local TESTING dir is present and matches remote after initial down-sync'
+    _mkdir "#{local_dir}/TESTING_OLD"
+    one_hour_ago = Time.now - 30 * 24 * 60 * 60
+    File.utime(one_hour_ago, one_hour_ago, "#{local_dir}/TESTING_OLD")
+    _assert_equals one_hour_ago.to_i, File.mtime("#{local_dir}/TESTING_OLD").to_i, 'parent folder TESTING_OLD mtime was updated to an hour ago by File.utime as expected'
+    _set_file_contents "#{local_dir}/TESTING_OLD/old.txt", 'a file with an old mtime'
+    File.utime(one_hour_ago, one_hour_ago, "#{local_dir}/TESTING_OLD/old.txt")
+    _assert_equals one_hour_ago.to_i, File.mtime("#{local_dir}/TESTING_OLD/old.txt").to_i, 'old.txt mtime was updated to an hour ago by File.utime as expected'
+    _sync
+    _assert_dirs_match "#{local_dir}/TESTING_OLD", "#{remote_dir}/TESTING_OLD", 'local TESTING_OLD matches remote after second sync'
+    _assert_file_contents "#{remote_dir}/TESTING_OLD/old.txt", 'a file with an old mtime', 'remote old.txt file has expected contents after second sync'
+  end
+
   def test_down_sync_pass_path_on_cmdline
     # test pass a path on the commandline, with a slash, make sure it syncs up, others don't
     local_dir, remote_dir = _setup(false, true, true)
     _sync('TESTING')
-    _assert_dirs_match "#{local_dir}/TESTING", "#{remote_dir}/TESTING", 'local TESTING dir is present after it was passed on cmdline to up sync'
+    _assert_dirs_match "#{local_dir}/TESTING", "#{remote_dir}/TESTING", 'local TESTING dir is present on remote after it was passed on cmdline to up sync'
     _assert_dir_contents local_dir, [ 'TESTING', 'sync.rb' ], 'local dir only contains TESTING (not TESTING_2) after it was passed on cmdline to up sync'
     _sync('TESTING_2/')
     _assert_dirs_match "#{local_dir}/TESTING_2", "#{remote_dir}/TESTING_2", 'local TESTING_2 dir is present after it was passed on cmdline to up sync'
@@ -469,7 +489,7 @@ class SyncTester
   end
 
   def _trace_cmd?
-    false
+    DEBUG_VERBOSE
   end
 
   def _trace_dots?
