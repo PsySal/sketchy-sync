@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # helper class; this represents a file information database, for storing shas and/or file sizes for a single root folder
 class FileSyncDB
   def initialize(folder_name)
@@ -116,21 +118,21 @@ class FileSyncDB
   # set the @file_info array from file_info, validating it first
   def _validate_and_set_file_info(file_info)
     # check that file_info is a hash
-    raise Exception, 'loaded file info is not a hash' unless file_info.is_a?(Hash)
+    raise StandardError, 'loaded file info is not a hash' unless file_info.is_a?(Hash)
 
     # check that each element is a hash, keyed on filename in this folder, and with no unexpected fields
     valid_info_keys = %w[sync_ts sha256]
     file_info.each do |filename, info|
-      raise Exception, "loaded file info contains an invalid key #{filename}" unless filename.is_a?(String)
+      raise StandardError, "loaded file info contains an invalid key #{filename}" unless filename.is_a?(String)
       unless filename.start_with?("#{@folder_name}/") && Pathname.new(filename).cleanpath.to_s == filename
-        raise Exception, "loaded file info contains a filename #{filename} not in the expected path #{@folder_name}"
+        raise StandardError, "loaded file info contains a filename #{filename} not in the expected path #{@folder_name}"
       end
 
-      raise Exception, 'loaded file info contains a line that is not a hash' unless info.is_a?(Hash)
+      raise StandardError, 'loaded file info contains a line that is not a hash' unless info.is_a?(Hash)
 
       invalid_info_keys = info.keys - valid_info_keys
       unless invalid_info_keys.empty?
-        raise Exception, "loaded file info contains a line with one or more invalid keys: #{invalid_info_keys}"
+        raise StandardError, "loaded file info contains a line with one or more invalid keys: #{invalid_info_keys}"
       end
     end
 
@@ -147,7 +149,7 @@ class FileSyncDB
         _find_all_file_stats(f, dest_file_stats)
       elsif File.file?(f)
         fs = File.stat(f)
-        raise Exception, "could not stat file: #{f}" unless fs
+        raise StandardError, "could not stat file: #{f}" unless fs
 
         dest_file_stats[f] = {
           'size' => fs.size,
