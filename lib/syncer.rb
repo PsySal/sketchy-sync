@@ -1,11 +1,9 @@
-
-# Synchronize files via rsync (commandline)
-class Syncer
-	#!/usr/bin/env ruby
+#!/usr/bin/env ruby
 
 require 'open3'
 require 'shellwords'
 
+# Synchronize files via rsync
 class Syncer
 	# sync a list of folders, or all first-level sub-folders in the current working directory
 	# - if an explicit folder list is given, they will be created first

@@ -508,5 +508,3 @@ class SyncTester
 		!_trace_cmd?
 	end
 end
-
-SyncTester.new

@@ -10,4 +10,4 @@ folders_to_check =
 	end
 
 syncer = Syncer.new
-syncer.sync_all_folders(folders_to_check)
+#syncer.sync_all_folders(folders_to_check)
