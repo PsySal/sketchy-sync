@@ -4,6 +4,7 @@ require 'net/ssh'
 require 'pathname'
 require 'securerandom'
 require 'shellwords'
+require 'tempfile'
 require 'tmpdir'
 require 'yaml'
 
@@ -11,17 +12,19 @@ class SyncTesterRetryError < Exception; end
 class SyncTesterFailedAssertionError < Exception; end
 
 class SyncTester
-	SYNC_RB="#{__dir__}/sync.rb"
-	TESTING_DATA_DIR="#{__dir__}/test_data"
+	SYNC_RB="#{__dir__}/../bin/kl-sync.rb"
+	TESTING_DATA_DIR="#{__dir__}/../test_data"
 	TEMP_DIR="#{__dir__}/temp"
-	REMOTE_TEMP_DIR="calvin@musicbox:/Users/calvin/Temp"
+	# REMOTE_TEMP_DIR="calvin@musicbox:/Users/calvin/Temp"
 	MAX_RETRIES_PER_TEST = 5
 	RETRY_DELAY_S = 5
 	SYNC_REMOTE_SLEEP_DELAY_S = 0 # can be 0; set to higher numbers to reduce the number of retries due to remote host ssh throttling
 	SET_FILE_CONTENTS_FAST_MODE_SLEEP_DELAY_S = 1 # should be at least 1; this is a limitation of using mtime, atime, and rsync
 	DEBUG_VERBOSE = false # set to true for verbose output from tests
 
-	def initialize
+	def initialize(remote_temp_dir)
+		@remote_temp_dir = remote_temp_dir
+
 		# git can't commit empty folders; add the one in test data here
 		empty_sub_folder = "#{TESTING_DATA_DIR}/TESTING/empty_sub_folder"
 		_mkdir empty_sub_folder unless _dir_exist?(empty_sub_folder)
@@ -293,14 +296,14 @@ class SyncTester
 
 	def _setup(init_local_dir_contents, init_remote_dir_contents, init_settings = false)
 		_mkdir TEMP_DIR unless _dir_exist?(TEMP_DIR)
-		_mkdir REMOTE_TEMP_DIR unless REMOTE_TEMP_DIR.nil? || _dir_exist?(REMOTE_TEMP_DIR)
+		_mkdir @remote_temp_dir unless @remote_temp_dir.nil? || _dir_exist?(@remote_temp_dir)
 
 		temp_dir_suffix = "#{Time.now.strftime("%Y-%m-%d")}_#{SecureRandom.hex(4)}"
 		local_dir = "#{TEMP_DIR}/local_#{temp_dir_suffix}"
 		raise "local temp dir #{local_dir} already exists" if _dir_exist?(local_dir)
 		_mkdir local_dir
 
-		remote_dir_prefix = @use_remote_temp_dir ? REMOTE_TEMP_DIR : TEMP_DIR
+		remote_dir_prefix = @use_remote_temp_dir ? @remote_temp_dir : TEMP_DIR
 		remote_dir = "#{remote_dir_prefix}/remote_#{temp_dir_suffix}"
 		raise "remote dir #{remote_dir} already exists" if _dir_exist? remote_dir
 		_mkdir remote_dir

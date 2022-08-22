@@ -5,24 +5,71 @@ class Syncer
 
 require 'open3'
 require 'shellwords'
-require 'yaml'
-require 'tempfile'
-require 'pathname'
-
-# this is a special folder for lock files and timing files, and the settings file that controls where and how we sync
-SHASUM_BIN = 'shasum -b'
-TEST_SHASUM = true
-
-# sync stdout so that progress messages are more likely to display correctly
-STDOUT.sync = true
 
 class Syncer
+	# sync a list of folders, or all first-level sub-folders in the current working directory
+	# - if an explicit folder list is given, they will be created first
+	def sync_all_folders(folders_to_check = nil)
+		# sync stdout so that progress messages are more likely to display correctly
+		STDOUT.sync = true
+
+		# do we need to first create them?
+		if folders_to_check
+			_check_create_all_folders(folders_to_check)
+		else
+			folders_to_check = Dir.glob('*')
+		end
+
+		@ljust_width = _compute_ljust_width(folders_to_check)
+
+		# iterate all folders
+		folders_to_check.each do |folder_name|
+			folder_name = File.basename(folder_name)
+			next if folder_name.include?('/')
+			next if SyncSettings::DOT_SYNC_FOLDER == folder_name
+			next unless File.directory?(folder_name)
+
+			puts_prefix = folder_name.ljust(ljust_width, ' ')
+			_sync_folder(puts_prefix, folder_name)
+		end
+	end
+
+	private
+
+	# ensure the input list of folders exist (and are directories), creating as needed
+	def _check_create_all_folders(folders_to_check)
+		folders_to_check.each do |folder_name|
+			if File.exist? folder_name
+				unless File.directory? folder_name
+					puts "💀  ERROR: passed #{folder_name} on the commandline, which is not a folder"
+					exit -1
+				end
+			else
+				Dir.mkdir folder_name
+			end
+		end
+	end
+
+	# compute the maximum left-justification width so we can pretty-print
+	def _compute_ljust_width(folders_to_check)
+		ljust_width = 1
+		folders_to_check.each do |folder_name|
+			folder_name = File.basename(folder_name)
+			next if folder_name.include?('/')
+			next if DOT_SYNC_FOLDER == folder_name
+			next unless File.directory?(folder_name)
+
+			ljust_width = [ljust_width, folder_name.length].max
+		end
+		ljust_width
+	end
+
 	# sync a given folder somewhat safely
 	# - we first sync UP, then DOWN, using rsync
 	# - when we sync UP, we only sync files since the last sync date, and only update files
 	# - when we sync DOWN, we use -delete option; this allows moved/deleted files in source to propogate, but is a bit dangerous
 	# - we keep track of a sync lockfile and timefile in a special .sync/ folder
-	def sync_folder(puts_prefix, folder_name)
+	def _sync_folder(puts_prefix, folder_name)
 		puts "#{puts_prefix}:🔒  creating lockfile"
 
 		start_sync_ts = Time.now.to_i
@@ -75,8 +122,6 @@ class Syncer
 			puts "#{puts_prefix}:💀  WARNING: could not delete folder lockfile #{folder_lockfile} for folder #{folder_name}; sync may fail until this lockfile is removed"
 		end
 	end
-
-	private
 
 	# capture and echo stdout/stderr (from Open3) in threads, joining them after
 	def _capture_and_echo_io(prefix, stdout, stderr)
@@ -228,52 +273,5 @@ class Syncer
 
 		rsync_status.success?
 	end
-
-# did they specify a list of folders on the commandline?
-check_create_folders = false
-folders_to_check =
-	if ARGV.size > 0
-		check_create_folders = true
-		ARGV.dup
-	else
-		Dir.glob('*')
-	end
-
-# if dirs were passed on the commandline, then check and create any that need to be
-if check_create_folders then
-	folders_to_check.each do |folder_name|
-		if File.exist? folder_name
-			unless File.directory? folder_name
-				puts "💀  ERROR: passed #{folder_name} on the commandline, which is not a folder"
-				exit -1
-			end
-		else
-			Dir.mkdir folder_name
-		end
-	end
-end
-
-# create missing dirs, get maximum ljust width so it prints nicely
-ljust_width = 1
-folders_to_check.each do |folder_name|
-	folder_name = File.basename(folder_name)
-	next if folder_name.include?('/')
-	next if DOT_SYNC_FOLDER == folder_name
-	next unless File.directory?(folder_name)
-
-	ljust_width = [ljust_width, folder_name.length].max
-end
-
-# iterate all folders
-folders_to_check.each do |folder_name|
-	folder_name = File.basename(folder_name)
-	next if folder_name.include?('/')
-	next if DOT_SYNC_FOLDER == folder_name
-	next unless File.directory?(folder_name)
-
-	puts_prefix = folder_name.ljust(ljust_width, ' ')
-	sync_folder(puts_prefix, folder_name)
-end
-
 end
 

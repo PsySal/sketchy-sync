@@ -1,9 +1,11 @@
 require 'file'
+require 'yaml'
 
 class SyncSettings
 	DOT_SYNC_FOLDER = '.sync'
 	SYNC_SETTINGS_BASENAME = 'sync_settings.txt'
 	SYNC_SETTINGS_FILENAME = "#{DOT_SYNC_FOLDER}/#{SYNC_SETTINGS_BASENAME}"
+	SHASUM_BIN = 'shasum -b'
 
 	def initialize
 		_check_create_dot_sync_folder
