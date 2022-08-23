@@ -25,6 +25,9 @@ class SyncTester
   SET_FILE_CONTENTS_FAST_MODE_SLEEP_DELAY_S = 1 # should be at least 1; this is a limitation of using mtime, atime, and rsync
   DEBUG_VERBOSE = false # set to true for verbose output from tests
 
+  # rubocop:disable Metrics/AbcSize
+  # rubocop:disable Metrics/CyclomaticComplexity
+  # rubocop:disable Metrics/PerceivedComplexity
   def initialize(remote_temp_dir)
     @remote_temp_dir = remote_temp_dir
 
@@ -62,6 +65,9 @@ class SyncTester
     (['retried tests:'] + @retried_tests).each { |s| puts s } unless @retried_tests.empty?
     (['failed tests:'] + @failed_tests).each { |s| puts s } unless @failed_tests.empty?
   end
+  # rubocop:enable Metrics/AbcSize
+  # rubocop:enable Metrics/CyclomaticComplexity
+  # rubocop:enable Metrics/PerceivedComplexity
 
   # test shasum to make sure it works as expected
   def test_shasum
@@ -76,7 +82,7 @@ class SyncTester
   end
 
   def test_dot_sync_dir_was_initialized
-    local_dir, remote_dir = _setup(false, false, false)
+    local_dir, = _setup(false, false, false)
     _assert_dir_contents "#{local_dir}/.sync", ['sync_settings.txt'], 'sync_settings.txt is in .sync dir'
     settings = _load_sync_settings(local_dir)
     _assert_equals settings['rsync_delete'], false, 'rsync_delete is initially set to false'
@@ -154,6 +160,7 @@ class SyncTester
     _assert_file_contents "#{remote_dir}/TESTING/hello.txt", 'hello immediately', 'dest file has new contents after second sync'
   end
 
+  # rubocop:disable Metrics/AbcSize
   def test_up_sync_add_file_locally_with_old_mtime
     local_dir, remote_dir = _setup(true, false, true)
     _sync
@@ -169,6 +176,7 @@ class SyncTester
     _assert_dirs_match "#{local_dir}/TESTING_OLD", "#{remote_dir}/TESTING_OLD", 'local TESTING_OLD matches remote after second sync'
     _assert_file_contents "#{remote_dir}/TESTING_OLD/old.txt", 'a file with an old mtime', 'remote old.txt file has expected contents after second sync'
   end
+  # rubocop:enable Metrics/AbcSize
 
   def test_down_sync_pass_path_on_cmdline
     # test pass a path on the commandline, with a slash, make sure it syncs up, others don't
@@ -242,7 +250,7 @@ class SyncTester
 
   def test_down_sync_file_deleted_locally_restored_after_down_sync
     # test down sync, file deleted local, down sync, file present again
-    local_dir, remote_dir = _setup(false, true, true)
+    local_dir, = _setup(false, true, true)
     _mkdir "#{local_dir}/TESTING"
     _sync
     _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", ['to_delete.txt'], 'the file to_delete.txt is present after initial down sync'
