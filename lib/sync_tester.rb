@@ -307,6 +307,9 @@ class SyncTester
     end
   end
 
+  # rubocop:disable Metrics/AbcSize
+  # rubocop:disable Metrics/CyclomaticComplexity
+  # rubocop:disable Metrics/PerceivedComplexity
   def _setup(init_local_dir_contents, init_remote_dir_contents, init_settings = false)
     _mkdir TEMP_DIR unless _dir_exist?(TEMP_DIR)
     _mkdir @remote_temp_dir unless @remote_temp_dir.nil? || _dir_exist?(@remote_temp_dir)
@@ -338,6 +341,9 @@ class SyncTester
 
     [local_dir, remote_dir]
   end
+  # rubocop:enable Metrics/AbcSize
+  # rubocop:enable Metrics/CyclomaticComplexity
+  # rubocop:enable Metrics/PerceivedComplexity
 
   def _setup_dir_contents(dir, dir_desc)
     remote_host, remote_dir = _remote_host_and_path dir

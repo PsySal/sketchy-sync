@@ -15,3 +15,6 @@ Style/CombinableLoops:
 
 Style/IfUnlessModifier:
     Enabled: false
+
+Style/OptionalBooleanParameter:
+    Enabled: false
