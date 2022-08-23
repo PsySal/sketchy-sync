@@ -10,7 +10,7 @@ class FileSyncDB
     # if the info file exists, load it
     begin
       _validate_and_set_file_info(YAML.load_file(@file_info_filename)) if File.exist?(@file_info_filename)
-    rescue Exception => e
+    rescue StandardError => e
       puts "💀  ERROR: could not load file info from #{@file_info_filename}"
       puts e
       exit(-1)
@@ -22,13 +22,15 @@ class FileSyncDB
     dest_file.write(@file_info.to_yaml)
     dest_file.close
     FileUtils.mv(dest_file.path, @file_info_filename)
-  rescue Exception => e
+  rescue StandardError => e
     puts "💀  ERROR: could not save file sync db to #{@file_info_filename}"
     puts e
     exit(-1)
   end
 
   # determine a list of files to update, and update our file info accordingly so it can be saved for the next run
+  # rubocop:disable Metrics/AbcSize
+  # rubocop:disable Metrics/MethodLength
   def update_file_info_and_find_all_files_to_up_sync!(puts_prefix, start_sync_ts)
     # get a list of everything in this folder, and select only those that need to be sync'd
     all_file_stats = {}
@@ -43,7 +45,6 @@ class FileSyncDB
     # - if we have a timestamp, and the timestamp is newer than the record
     sync_filenames = []
     all_file_stats.each do |filename, stats|
-      req_sync = false
       file_info_line = @file_info[filename]
       sha256 = all_shas[filename]
 
@@ -79,9 +80,12 @@ class FileSyncDB
 
     sync_filenames
   end
+  # rubocop:enable Metrics/AbcSize
+  # rubocop:enable Metrics/MethodLength
 
   # refresh everything for files newer than the given timestamp
   # - this is intended for use after down sync, to update the file sync db with any downloaded files
+  # rubocop:disable Metrics/AbcSize
   def update_file_info_after_down_sync!(puts_prefix, start_sync_ts, end_sync_ts)
     all_file_stats = {}
     _find_all_file_stats(@folder_name, all_file_stats)
@@ -112,10 +116,13 @@ class FileSyncDB
       file_info_line['sync_ts'] = end_sync_ts # stats['update_ts']
     end
   end
+  # rubocop:enable Metrics/AbcSize
 
   private
 
   # set the @file_info array from file_info, validating it first
+  # rubocop:disable Metrics/AbcSize
+  # rubocop:disable Metrics/CyclomaticComplexity
   def _validate_and_set_file_info(file_info)
     # check that file_info is a hash
     raise StandardError, 'loaded file info is not a hash' unless file_info.is_a?(Hash)
@@ -139,12 +146,15 @@ class FileSyncDB
     # made it this far, then everything is good
     @file_info = file_info
   end
+  # rubocop:enable Metrics/AbcSize
+  # rubocop:enable Metrics/CyclomaticComplexity
 
   # find all files, starting from the given folder, not including dotfiles
   # @param dest_file_stats [Hash<String, Hash>] output map from filename => { 'size' => size, 'mtime' => mtime, 'atime' => atime }
   def _find_all_file_stats(folder_name, dest_file_stats)
     Dir.glob("#{folder_name}/*") do |f|
       if File.basename(f).start_with?('.')
+        # nothing
       elsif File.directory?(f)
         _find_all_file_stats(f, dest_file_stats)
       elsif File.file?(f)
