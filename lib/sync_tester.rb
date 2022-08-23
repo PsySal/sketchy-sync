@@ -1,4 +1,5 @@
 #!/usr/bin/env ruby
+# frozen_string_literal: true
 
 require 'net/ssh'
 require 'pathname'
@@ -8,9 +9,11 @@ require 'tempfile'
 require 'tmpdir'
 require 'yaml'
 
-class SyncTesterRetryError < Exception; end
-class SyncTesterFailedAssertionError < Exception; end
+class SyncTesterRetryError < StandardError; end
+class SyncTesterFailedAssertionError < StandardError; end
 
+# Tests for sync
+# rubocop:disable Metrics/ClassLength
 class SyncTester
   SYNC_RB = "#{__dir__}/../bin/kl-sync.rb"
   TESTING_DATA_DIR = "#{__dir__}/../test_data"
@@ -66,7 +69,7 @@ class SyncTester
     sync_temp_file.write('sync')
     sync_temp_file_path = sync_temp_file.path
     sync_temp_file_shas = get_file_shas(nil, [sync_temp_file_path])
-    unless 'da39a3ee5e6b4b0d3255bfef95601890afd80709' == sync_temp_file_shas[sync_temp_file_path]
+    unless sync_temp_file_shas[sync_temp_file_path] == 'da39a3ee5e6b4b0d3255bfef95601890afd80709'
       puts "💀  ERROR: shasum binary '#{SHASUM_BIN}' does not work as expected; cannot proceed"
       exit(-1)
     end
@@ -86,13 +89,10 @@ class SyncTester
     # test pass a path on the commandline, with a slash, make sure it syncs up, others don't
     local_dir, remote_dir = _setup(true, false, true)
     _sync('TESTING')
-    _assert_dirs_match "#{remote_dir}/TESTING", "#{local_dir}/TESTING",
-                       'remote TESTING dir is present after it was passed on cmdline to up sync'
-    _assert_dir_contents remote_dir, ['TESTING'],
-                         'remote dir only contains TESTING (not TESTING_2) after it was passed on cmdline to up sync'
+    _assert_dirs_match "#{remote_dir}/TESTING", "#{local_dir}/TESTING", 'remote TESTING dir is present after it was passed on cmdline to up sync'
+    _assert_dir_contents remote_dir, ['TESTING'], 'remote dir only contains TESTING (not TESTING_2) after it was passed on cmdline to up sync'
     _sync('TESTING_2/')
-    _assert_dirs_match "#{remote_dir}/TESTING_2", "#{local_dir}/TESTING_2",
-                       'remote TESTING_2 dir is present after it was passed on cmdline to up sync'
+    _assert_dirs_match "#{remote_dir}/TESTING_2", "#{local_dir}/TESTING_2", 'remote TESTING_2 dir is present after it was passed on cmdline to up sync'
   end
 
   def test_up_sync_into_empty_dir
@@ -105,12 +105,10 @@ class SyncTester
   def test_up_sync_file_changes_locally
     local_dir, remote_dir = _setup(true, false, true)
     _sync
-    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello there\n",
-                          'file has expected contents after initial up sync'
+    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello there\n", 'file has expected contents after initial up sync'
     _set_file_contents "#{local_dir}/TESTING/hello.txt", 'hello again'
     _sync
-    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", 'hello again',
-                          'file has new contents after second up sync'
+    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", 'hello again', 'file has new contents after second up sync'
   end
 
   def test_up_sync_failed_retry_succeeded
@@ -132,54 +130,44 @@ class SyncTester
     # test initial up sync, file changed locally, failed sync (bad remote host) (so db not updated), try again, check sync went through
     local_dir, remote_dir = _setup(true, false, true)
     _sync
-    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello there\n",
-                          'file has expected contents after initial upsync'
+    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello there\n", 'file has expected contents after initial upsync'
     settings = _load_sync_settings(local_dir)
     settings['upstream_folder'] = 'user@example.com/temp'
     _save_sync_settings(local_dir, settings)
     _set_file_contents "#{local_dir}/TESTING/hello.txt", 'this file will take two syncs to upload'
     _sync
-    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello there\n",
-                          'remote file is unchanged after failed sync'
+    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", "hello there\n", 'remote file is unchanged after failed sync'
     settings = _load_sync_settings(local_dir)
     settings['upstream_folder'] = remote_dir
     _save_sync_settings(local_dir, settings)
     _sync
-    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", 'this file will take two syncs to upload',
-                          'remote file is unchanged after failed sync'
+    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", 'this file will take two syncs to upload', 'remote file is unchanged after failed sync'
   end
 
   def test_up_sync_immediate_change_to_new_file_from_down_sync
     local_dir, remote_dir = _setup(false, true, true)
     _mkdir "#{local_dir}/TESTING"
     _sync
-    _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello there\n",
-                          'file has expected contents after initial down sync'
+    _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello there\n", 'file has expected contents after initial down sync'
     _set_file_contents "#{local_dir}/TESTING/hello.txt", 'hello immediately'
     _sync
-    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", 'hello immediately',
-                          'dest file has new contents after second sync'
+    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", 'hello immediately', 'dest file has new contents after second sync'
   end
 
   def test_up_sync_add_file_locally_with_old_mtime
     local_dir, remote_dir = _setup(true, false, true)
     _sync
-    _assert_dirs_match "#{local_dir}/TESTING", "#{remote_dir}/TESTING",
-                       'local TESTING dir is present and matches remote after initial down-sync'
+    _assert_dirs_match "#{local_dir}/TESTING", "#{remote_dir}/TESTING", 'local TESTING dir is present and matches remote after initial down-sync'
     _mkdir "#{local_dir}/TESTING_OLD"
-    one_hour_ago = Time.now - 30 * 24 * 60 * 60
+    one_hour_ago = Time.now - (30 * 24 * 60 * 60)
     File.utime(one_hour_ago, one_hour_ago, "#{local_dir}/TESTING_OLD")
-    _assert_equals one_hour_ago.to_i, File.mtime("#{local_dir}/TESTING_OLD").to_i,
-                   'parent folder TESTING_OLD mtime was updated to an hour ago by File.utime as expected'
+    _assert_equals one_hour_ago.to_i, File.mtime("#{local_dir}/TESTING_OLD").to_i, 'parent folder TESTING_OLD mtime was updated to an hour ago by File.utime as expected'
     _set_file_contents "#{local_dir}/TESTING_OLD/old.txt", 'a file with an old mtime'
     File.utime(one_hour_ago, one_hour_ago, "#{local_dir}/TESTING_OLD/old.txt")
-    _assert_equals one_hour_ago.to_i, File.mtime("#{local_dir}/TESTING_OLD/old.txt").to_i,
-                   'old.txt mtime was updated to an hour ago by File.utime as expected'
+    _assert_equals one_hour_ago.to_i, File.mtime("#{local_dir}/TESTING_OLD/old.txt").to_i, 'old.txt mtime was updated to an hour ago by File.utime as expected'
     _sync
-    _assert_dirs_match "#{local_dir}/TESTING_OLD", "#{remote_dir}/TESTING_OLD",
-                       'local TESTING_OLD matches remote after second sync'
-    _assert_file_contents "#{remote_dir}/TESTING_OLD/old.txt", 'a file with an old mtime',
-                          'remote old.txt file has expected contents after second sync'
+    _assert_dirs_match "#{local_dir}/TESTING_OLD", "#{remote_dir}/TESTING_OLD", 'local TESTING_OLD matches remote after second sync'
+    _assert_file_contents "#{remote_dir}/TESTING_OLD/old.txt", 'a file with an old mtime', 'remote old.txt file has expected contents after second sync'
   end
 
   def test_down_sync_pass_path_on_cmdline
@@ -204,22 +192,18 @@ class SyncTester
     _mkdir "#{local_dir}/TESTING_2"
     _sync
     _assert_dirs_match local_dir, remote_dir, 'local dir matches remote dir after sync with folder created'
-    _assert_dirs_match "#{local_dir}/TESTING", "#{remote_dir}/TESTING",
-                       'local TESTING subdir matches remote after sync with folder created'
-    _assert_dirs_match "#{local_dir}/TESTING_2", "#{remote_dir}/TESTING_2",
-                       'local TESTING_2 subdir matches remote after sync with folder created'
+    _assert_dirs_match "#{local_dir}/TESTING", "#{remote_dir}/TESTING", 'local TESTING subdir matches remote after sync with folder created'
+    _assert_dirs_match "#{local_dir}/TESTING_2", "#{remote_dir}/TESTING_2", 'local TESTING_2 subdir matches remote after sync with folder created'
   end
 
   def test_down_sync_file_changes_on_server
     local_dir, remote_dir = _setup(false, true, true)
     _mkdir "#{local_dir}/TESTING"
     _sync
-    _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello there\n",
-                          'hello.txt has expected contents after initial down sync'
+    _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello there\n", 'hello.txt has expected contents after initial down sync'
     _set_file_contents "#{remote_dir}/TESTING/hello.txt", 'hello again'
     _sync
-    _assert_file_contents "#{local_dir}/TESTING/hello.txt", 'hello again',
-                          'hello.txt has new contents after second down sync'
+    _assert_file_contents "#{local_dir}/TESTING/hello.txt", 'hello again', 'hello.txt has new contents after second down sync'
   end
 
   def test_down_sync_file_changes_locally
@@ -227,19 +211,14 @@ class SyncTester
     local_dir, remote_dir = _setup(false, true, true)
     _mkdir "#{local_dir}/TESTING"
     _sync
-    _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello there\n",
-                          'hello.txt has expected contents after initial down sync'
+    _assert_file_contents "#{local_dir}/TESTING/hello.txt", "hello there\n", 'hello.txt has expected contents after initial down sync'
     _set_file_contents "#{local_dir}/TESTING/hello.txt", 'hello changed'
     _sync
-    _assert_file_contents "#{local_dir}/TESTING/hello.txt", 'hello changed',
-                          'hello.txt has new contents locally after second sync'
-    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", 'hello changed',
-                          'hello.txt has new contents on server after second sync'
+    _assert_file_contents "#{local_dir}/TESTING/hello.txt", 'hello changed', 'hello.txt has new contents locally after second sync'
+    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", 'hello changed', 'hello.txt has new contents on server after second sync'
     _sync
-    _assert_file_contents "#{local_dir}/TESTING/hello.txt", 'hello changed',
-                          'hello.txt has new contents locally after third sync'
-    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", 'hello changed',
-                          'hello.txt has new contents on server after third sync'
+    _assert_file_contents "#{local_dir}/TESTING/hello.txt", 'hello changed', 'hello.txt has new contents locally after third sync'
+    _assert_file_contents "#{remote_dir}/TESTING/hello.txt", 'hello changed', 'hello.txt has new contents on server after third sync'
   end
 
   def test_down_sync_with_and_without_enable_rsync_delete
@@ -247,24 +226,18 @@ class SyncTester
     local_dir, remote_dir = _setup(false, true, true)
     _mkdir "#{local_dir}/TESTING"
     _sync
-    _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", ['to_delete.txt'],
-                         'the file to_delete.txt is present after initial down sync'
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", ['to_delete.txt'], 'the file to_delete.txt is present after initial down sync'
     _rm "#{remote_dir}/TESTING/sub_folder_2/to_delete.txt"
-    _assert_dir_contents "#{remote_dir}/TESTING/sub_folder_2", [],
-                         'the file to_delete.txt was deleted from the remote dir by this test'
+    _assert_dir_contents "#{remote_dir}/TESTING/sub_folder_2", [], 'the file to_delete.txt was deleted from the remote dir by this test'
     _sync
-    _assert_dir_contents "#{remote_dir}/TESTING/sub_folder_2", [],
-                         'the file to_delete.txt is still absent from the remote dir, even after sync'
-    _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", ['to_delete.txt'],
-                         'the file to_delete.txt is still present, even after deleting on server and second down sync'
+    _assert_dir_contents "#{remote_dir}/TESTING/sub_folder_2", [], 'the file to_delete.txt is still absent from the remote dir, even after sync'
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", ['to_delete.txt'], 'the file to_delete.txt is still present, even after deleting on server and second down sync'
     settings = _load_sync_settings(local_dir)
     settings['rsync_delete'] = true
     _save_sync_settings(local_dir, settings)
     _sync
-    _assert_dir_contents "#{remote_dir}/TESTING/sub_folder_2", [],
-                         'the file to_delete.txt is still absent from the remote dir, even after a second sync'
-    _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", [],
-                         'the file to_delete.txt was deleted locally once rsync_delete was turned on'
+    _assert_dir_contents "#{remote_dir}/TESTING/sub_folder_2", [], 'the file to_delete.txt is still absent from the remote dir, even after a second sync'
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", [], 'the file to_delete.txt was deleted locally once rsync_delete was turned on'
   end
 
   def test_down_sync_file_deleted_locally_restored_after_down_sync
@@ -272,12 +245,10 @@ class SyncTester
     local_dir, remote_dir = _setup(false, true, true)
     _mkdir "#{local_dir}/TESTING"
     _sync
-    _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", ['to_delete.txt'],
-                         'the file to_delete.txt is present after initial down sync'
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", ['to_delete.txt'], 'the file to_delete.txt is present after initial down sync'
     _rm "#{local_dir}/TESTING/sub_folder_2/to_delete.txt"
     _sync
-    _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", ['to_delete.txt'],
-                         'the file to_delete.txt was restored after the second sync'
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", ['to_delete.txt'], 'the file to_delete.txt was restored after the second sync'
   end
 
   def test_down_sync_file_moved_remotely_down_sync_file_duplicated
@@ -285,14 +256,11 @@ class SyncTester
     local_dir, remote_dir = _setup(false, true, true)
     _mkdir "#{local_dir}/TESTING"
     _sync
-    _assert_dir_contents "#{local_dir}/TESTING/sub_folder", ['text 456.txt'],
-                         'the file test 456.txt is present in TESTING/sub_folder after initial sync'
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder", ['text 456.txt'], 'the file test 456.txt is present in TESTING/sub_folder after initial sync'
     _mv "#{remote_dir}/TESTING/sub_folder/text 456.txt", "#{remote_dir}/TESTING/sub_folder_2"
     _sync
-    _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", ['text 456.txt', 'to_delete.txt'],
-                         'the file test 456.txt is in TESTING/sub_folder_2 after move on the remote and a second sync'
-    _assert_dir_contents "#{local_dir}/TESTING/sub_folder", ['text 456.txt'],
-                         'the file test 456.txt is still present in TESTING/sub_folder after second sync (because rsync delete is disabled)'
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", ['text 456.txt', 'to_delete.txt'], 'the file test 456.txt is in TESTING/sub_folder_2 after move on the remote and a second sync'
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder", ['text 456.txt'], 'the file test 456.txt is still present in TESTING/sub_folder after second sync (because rsync delete is disabled)'
   end
 
   def test_down_sync_file_moved_remotely_down_sync_file_moved_enable_rsync_delete
@@ -303,14 +271,11 @@ class SyncTester
     _save_sync_settings(local_dir, settings)
     _mkdir "#{local_dir}/TESTING"
     _sync
-    _assert_dir_contents "#{local_dir}/TESTING/sub_folder", ['text 456.txt'],
-                         'the file test 456.txt is present in TESTING/sub_folder after initial sync'
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder", ['text 456.txt'], 'the file test 456.txt is present in TESTING/sub_folder after initial sync'
     _mv "#{remote_dir}/TESTING/sub_folder/text 456.txt", "#{remote_dir}/TESTING/sub_folder_2"
     _sync
-    _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", ['text 456.txt', 'to_delete.txt'],
-                         'the file test 456.txt is in TESTING/sub_folder_2 after move on the remote and a second sync'
-    _assert_dir_contents "#{local_dir}/TESTING/sub_folder", [],
-                         'the file test 456.txt is no longer present in TESTING/sub_folder after second sync (because rsync delete is enabled)'
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder_2", ['text 456.txt', 'to_delete.txt'], 'the file test 456.txt is in TESTING/sub_folder_2 after move on the remote and a second sync'
+    _assert_dir_contents "#{local_dir}/TESTING/sub_folder", [], 'the file test 456.txt is no longer present in TESTING/sub_folder after second sync (because rsync delete is enabled)'
   end
 
   private
@@ -326,7 +291,7 @@ class SyncTester
       break
     rescue SyncTesterRetryError => e
       retry_counter -= 1
-      raise "ran out of test retries in #{test_method} (#{e})" if 0 == retry_counter
+      raise "ran out of test retries in #{test_method} (#{e})" if retry_counter.zero?
 
       sleep RETRY_DELAY_S
       @retried_tests << "#{test_method} (#{e})"
@@ -374,14 +339,13 @@ class SyncTester
       _exec_local("cp -R #{Shellwords.escape(TESTING_DATA_DIR)}/* #{Shellwords.escape(dir)}")
     end
     _assert_dir_contents dir, %w[TESTING TESTING_2], "#{dir_desc} has expected folders after setup"
-    _assert_dir_contents "#{dir}/TESTING/sub_folder/", ['text 456.txt'],
-                         "#{dir_desc} has expected files in TESTING/sub_folder after setup"
+    _assert_dir_contents "#{dir}/TESTING/sub_folder/", ['text 456.txt'], "#{dir_desc} has expected files in TESTING/sub_folder after setup"
     _assert_dir_contents_size "#{dir}/TESTING", 7, "#{dir_desc} has expected number of files in TESTING/ after setup"
   end
 
   def _setup_settings(local_dir, remote_dir)
     settings = _load_sync_settings(local_dir)
-    settings['upstream_folder'] = "#{remote_dir}"
+    settings['upstream_folder'] = remote_dir.to_s
     settings['sleep_time'] = 0
     settings['rsync_dry_run'] = false
     settings['fast_mode'] = @fast_mode
@@ -444,8 +408,7 @@ class SyncTester
 
   def _dir_contents_recursive(dir)
     remote_host, dir = _remote_host_and_path dir
-    _exec_auto_local_or_remote(remote_host,
-                               "cd #{Shellwords.escape(dir)} && find . -not -type d -and -not -path \"\./sync\.rb\" -and -not -path \"\./\.sync/*\"").split("\n")
+    _exec_auto_local_or_remote(remote_host, "cd #{Shellwords.escape(dir)} && find . -not -type d -and -not -path \"\./sync\.rb\" -and -not -path \"\./\.sync/*\"").split("\n")
   end
 
   def _assert_file_contents(filename, contents, desc)
@@ -458,15 +421,10 @@ class SyncTester
   end
 
   def _set_file_contents(filename, contents)
-    if @fast_mode
-      sleep SET_FILE_CONTENTS_FAST_MODE_SLEEP_DELAY_S
-    end # XXX limitation of our scheme is we can't detect files changed within a second of syncing; make sure we don't hit that in tests
+    sleep SET_FILE_CONTENTS_FAST_MODE_SLEEP_DELAY_S if @fast_mode # XXX limitation of our scheme is we can't detect files changed within a second of syncing; make sure we don't hit that in tests
     remote_host, filename = _remote_host_and_path filename
-    _exec_auto_local_or_remote(remote_host,
-                               "printf '%s' #{Shellwords.escape(contents)} >#{Shellwords.escape(filename)}")
-    if @fast_mode
-      sleep SET_FILE_CONTENTS_FAST_MODE_SLEEP_DELAY_S
-    end # XXX we need to guard this change from a sync before OR after
+    _exec_auto_local_or_remote(remote_host, "printf '%s' #{Shellwords.escape(contents)} >#{Shellwords.escape(filename)}")
+    sleep SET_FILE_CONTENTS_FAST_MODE_SLEEP_DELAY_S if @fast_mode # XXX we need to guard this change from a sync before OR after
   end
 
   def _rm(filename)
@@ -494,7 +452,7 @@ class SyncTester
 
   def _net_ssh_session_for_remote_host(remote_host)
     parts = remote_host.split '@'
-    raise "internal: invalid remote host format #{remote_host}" unless 2 == parts.size
+    raise "internal: invalid remote host format #{remote_host}" unless parts.size == 2
 
     host = parts[1]
     user = parts[0]
@@ -528,8 +486,7 @@ class SyncTester
     puts s if _trace_cmd?
 
     if s.match? 'Connection refused'
-      raise SyncTesterRetryError,
-            "internal: sync encountered connection refused; re-running current test #{_assert_desc}"
+      raise SyncTesterRetryError, "internal: sync encountered connection refused; re-running current test #{_assert_desc}"
     end
 
     # as long as this wasn't the first run to create skeletal sync_settings.txt, make sure fast mode affected calculated shas as expected
@@ -538,12 +495,10 @@ class SyncTester
       calculated_shas = s.match? 'computing full sha signatures'
       if @fast_mode
         _assert_equals true, skipped_shas, 'sha calculations should be skipped because fast mode is enabled'
-        _assert_equals false, calculated_shas,
-                       'full sha signatures should not be calculated because fast mode is enabled'
+        _assert_equals false, calculated_shas, 'full sha signatures should not be calculated because fast mode is enabled'
       else
         _assert_equals false, skipped_shas, 'sha calculations should not be skipped because fast mode is not enabled'
-        _assert_equals true, calculated_shas,
-                       'full sha signatures should be calculated because fast mode is not enabled'
+        _assert_equals true, calculated_shas, 'full sha signatures should be calculated because fast mode is not enabled'
       end
     end
 
@@ -563,7 +518,7 @@ class SyncTester
   end
 
   def _dot(dot)
-    printf(dot) && STDOUT.sync if _trace_dots?
+    printf(dot) && $stdout.sync if _trace_dots?
   end
 
   def _trace_cmd?
@@ -574,3 +529,4 @@ class SyncTester
     !_trace_cmd?
   end
 end
+# rubocop:enable Metrics/ClassLength
