@@ -75,10 +75,10 @@ class SyncTester
     sync_temp_file.write('sync')
     sync_temp_file_path = sync_temp_file.path
     sync_temp_file_shas = get_file_shas(nil, [sync_temp_file_path])
-    unless sync_temp_file_shas[sync_temp_file_path] == 'da39a3ee5e6b4b0d3255bfef95601890afd80709'
-      puts "💀  ERROR: shasum binary '#{SHASUM_BIN}' does not work as expected; cannot proceed"
-      exit(-1)
-    end
+    return if sync_temp_file_shas[sync_temp_file_path] == 'da39a3ee5e6b4b0d3255bfef95601890afd80709'
+
+    puts "💀  ERROR: shasum binary '#{SHASUM_BIN}' does not work as expected; cannot proceed"
+    exit(-1)
   end
 
   def test_dot_sync_dir_was_initialized
