@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'file'
 require 'yaml'
 
@@ -76,7 +78,7 @@ class SyncSettings
 
   def _load_settings
     # try to load the sync_settings.txt (YAML)
-    @settings = YAML.load_file("#{SYNC_SETTINGS_FILENAME}")
+    @settings = YAML.load_file(SYNC_SETTINGS_FILENAME)
   rescue Exception => e
     puts "💀  ERROR: could not load settings from #{SYNC_SETTINGS_FILENAME}"
     puts e
@@ -88,7 +90,7 @@ class SyncSettings
 
     puts "creating #{DOT_SYNC_FOLDER}"
     Dir.mkdir(DOT_SYNC_FOLDER)
-    File.open("#{SYNC_SETTINGS_FILENAME}", 'w') do |f|
+    File.open(SYNC_SETTINGS_FILENAME, 'w') do |f|
       f.write <<~EOT
         # This file controls sync settings. It must be edited before sync will work.
 
