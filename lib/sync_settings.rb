@@ -3,6 +3,7 @@
 require 'file'
 require 'yaml'
 
+# Load/save sync settings from the .sync folder
 class SyncSettings
   DOT_SYNC_FOLDER = '.sync'
   SYNC_SETTINGS_BASENAME = 'sync_settings.txt'
@@ -49,6 +50,7 @@ class SyncSettings
 
   private
 
+  # rubocop:disable Metrics/AbcSize
   def _validate_setings
     # make sure settings file was actually initialized
     unless _settings_are_set
@@ -63,7 +65,7 @@ class SyncSettings
     end
 
     # make sure they specified a valid sleep time
-    unless sleep_time & sleep_time >= 0
+    unless sleep_time && sleep_time >= 0
       puts "💀  ERROR: please specify sleep_time >= 0 in #{SYNC_SETTINGS_FILENAME}"
       exit(-1)
     end
@@ -71,6 +73,7 @@ class SyncSettings
     # print a warning if we're in dry run mode
     puts "💀  WARNING: executing in dry-run mode; not actually sync'ing anything" unless rsync_dry_run.empty?
   end
+  # rubocop:enable Metrics/AbcSize
 
   def _settings_are_set
     @settings && @settings['settings_are_set'] == true
@@ -79,7 +82,7 @@ class SyncSettings
   def _load_settings
     # try to load the sync_settings.txt (YAML)
     @settings = YAML.load_file(SYNC_SETTINGS_FILENAME)
-  rescue Exception => e
+  rescue StandardError => e
     puts "💀  ERROR: could not load settings from #{SYNC_SETTINGS_FILENAME}"
     puts e
     exit(-1)
@@ -91,7 +94,7 @@ class SyncSettings
     puts "creating #{DOT_SYNC_FOLDER}"
     Dir.mkdir(DOT_SYNC_FOLDER)
     File.open(SYNC_SETTINGS_FILENAME, 'w') do |f|
-      f.write <<~EOT
+      f.write <<~END_OF_SYNC_SETTINGS_STUB
         # This file controls sync settings. It must be edited before sync will work.
 
         # this defines the server you sync to
@@ -135,8 +138,8 @@ class SyncSettings
         # this tells sync.rb that you have configured this file
         # - set it to Yes once you've configured this file
         settings_are_set: No
-      EOT
-    rescue Exception => e
+      END_OF_SYNC_SETTINGS_STUB
+    rescue StandardError => e
       puts "💀  ERROR: could not create #{DOT_SYNC_FOLDER} or #{SYNC_SETTINGS_FILENAME}"
       puts e
       exit(-1)
