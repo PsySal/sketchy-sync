@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require 'file'
 require 'yaml'
 
 # Load/save sync settings from the .sync folder
