@@ -3,11 +3,15 @@
 require 'open3'
 require 'shellwords'
 
+require_relative 'sync_settings'
+
 # Synchronize files via rsync
 class Syncer
 	# sync a list of folders, or all first-level sub-folders in the current working directory
 	# - if an explicit folder list is given, they will be created first
 	def sync_all_folders(folders_to_check = nil)
+		@settings = SyncSettings.new
+
 		# sync stdout so that progress messages are more likely to display correctly
 		STDOUT.sync = true
 
@@ -18,7 +22,7 @@ class Syncer
 			folders_to_check = Dir.glob('*')
 		end
 
-		@ljust_width = _compute_ljust_width(folders_to_check)
+		ljust_width = _compute_ljust_width(folders_to_check)
 
 		# iterate all folders
 		folders_to_check.each do |folder_name|
@@ -54,7 +58,7 @@ class Syncer
 		folders_to_check.each do |folder_name|
 			folder_name = File.basename(folder_name)
 			next if folder_name.include?('/')
-			next if DOT_SYNC_FOLDER == folder_name
+			next if SyncSettings::DOT_SYNC_FOLDER == folder_name
 			next unless File.directory?(folder_name)
 
 			ljust_width = [ljust_width, folder_name.length].max
@@ -73,7 +77,7 @@ class Syncer
 		start_sync_ts = Time.now.to_i
 
 		# create a lock file in .sync
-		folder_lockfile = "#{DOT_SYNC_FOLDER}/#{folder_name}.lock"
+		folder_lockfile = "#{SyncSettings::DOT_SYNC_FOLDER}/#{folder_name}.lock"
 		if File.exist?(folder_lockfile)
 			puts "#{puts_prefix}:💀  ERROR: folder lockfile #{folder_lockfile} exists; not syncing this folder."
 			return false
