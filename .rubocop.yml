@@ -1,20 +1,20 @@
 AllCops:
-    NewCops: enable
+	NewCops: enable
 
 Layout/LineLength:
-    Enabled: false
+	Enabled: false
 
 Metrics/ClassLength:
-    Max: 200
+	Max: 200
 
 Metrics/MethodLength:
-    Max: 20
+	Max: 20
 
 Style/CombinableLoops:
-    Enabled: false
+	Enabled: false
 
 Style/IfUnlessModifier:
-    Enabled: false
+	Enabled: false
 
 Style/OptionalBooleanParameter:
-    Enabled: false
+	Enabled: false
