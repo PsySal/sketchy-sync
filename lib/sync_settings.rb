@@ -50,7 +50,7 @@ class SyncSettings
 	private
 
 	# rubocop:disable Metrics/AbcSize
-	def _validate_setings
+	def _validate_settings
 		# make sure settings file was actually initialized
 		unless _settings_are_set
 			puts "💀  ERROR: please edit #{SYNC_SETTINGS_FILENAME} with your sync settings, and set settings_are_set to Yes"
