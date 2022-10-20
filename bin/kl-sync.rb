@@ -31,5 +31,5 @@ syncer = Syncer.new
 
 puts 'test' if opts[:test]
 
-#syncer.sync_all_folders(folders_to_check)
+syncer.sync_all_folders(folders_to_check)
 

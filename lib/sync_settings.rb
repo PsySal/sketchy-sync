@@ -15,7 +15,7 @@ class SyncSettings
 		_validate_settings
 	end
 
-	def upsteam_folder
+	def upstream_folder
 		@settings['upstream_folder'].to_s
 	end
 
@@ -39,15 +39,21 @@ class SyncSettings
 		@settings['fast_mode']
 	end
 
-	def fast_mode_include_root_folders
-		@settings['fast_mode_include_root_folders']
-	end
-
-	def fast_mode_exclude_root_folders
-		@settings['fast_mode_exclude_root_folders']
+	def use_fast_mode_for_folder?(folder_name)
+		fast_mode? \
+			&& (_fast_mode_include_root_folders.empty? || _fast_mode_include_root_folders.include?(folder_name)) \
+			&& !_fast_mode_exclude_root_folders.include?(folder_name)
 	end
 
 	private
+
+	def _fast_mode_include_root_folders
+		@settings['fast_mode_include_root_folders']
+	end
+
+	def _fast_mode_exclude_root_folders
+		@settings['fast_mode_exclude_root_folders']
+	end
 
 	# rubocop:disable Metrics/AbcSize
 	def _validate_settings
@@ -58,7 +64,7 @@ class SyncSettings
 		end
 
 		# make sure they specified an upstream folder
-		unless upstream_folder && !_upstream_folder.empty?
+		unless upstream_folder && !upstream_folder.empty?
 			puts "💀  ERROR: please specify upstream_folder in #{SYNC_SETTINGS_FILENAME}"
 			exit(-1)
 		end

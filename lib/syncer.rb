@@ -3,6 +3,7 @@
 require 'open3'
 require 'shellwords'
 
+require_relative 'sync_db'
 require_relative 'sync_settings'
 
 # Synchronize files via rsync
@@ -91,14 +92,14 @@ class Syncer
 		end
 
 		# initialize our file info db, for syncing
-		file_sync_db = FileSyncDB.new(folder_name)
+		file_sync_db = FileSyncDB.new(@settings, folder_name)
 
 		# sync them up
-		rsync_up_succeeded = sync_folder_up(puts_prefix, folder_name, file_sync_db, start_sync_ts)
+		rsync_up_succeeded = _sync_folder_up(puts_prefix, folder_name, file_sync_db, start_sync_ts)
 
 		# sync down, but only if there were no errors syncing up
 		if rsync_up_succeeded
-			rsync_down_succeeded = sync_folder_down(puts_prefix, folder_name, file_sync_db, start_sync_ts)
+			rsync_down_succeeded = _sync_folder_down(puts_prefix, folder_name, file_sync_db, start_sync_ts)
 
 			if rsync_down_succeeded
 				puts "#{puts_prefix}:✅  Down-sync suceeded; files are up-to-date."
