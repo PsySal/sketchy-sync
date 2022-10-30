@@ -99,9 +99,9 @@ class SyncTester
 		local_dir, remote_dir = _setup(true, false, true)
 		_sync('TESTING')
 		_assert_dirs_match "#{remote_dir}/TESTING", "#{local_dir}/TESTING", 'remote TESTING dir is present after it was passed on cmdline to up sync'
-#		_assert_dir_contents remote_dir, ['TESTING'], 'remote dir only contains TESTING (not TESTING_2) after it was passed on cmdline to up sync'
-#		_sync('TESTING_2/')
-#		_assert_dirs_match "#{remote_dir}/TESTING_2", "#{local_dir}/TESTING_2", 'remote TESTING_2 dir is present after it was passed on cmdline to up sync'
+		_assert_dir_contents remote_dir, ['TESTING'], 'remote dir only contains TESTING (not TESTING_2) after it was passed on cmdline to up sync'
+		_sync('TESTING_2/')
+		_assert_dirs_match "#{remote_dir}/TESTING_2", "#{local_dir}/TESTING_2", 'remote TESTING_2 dir is present after it was passed on cmdline to up sync'
 	end
 
 	def xtest_up_sync_into_empty_dir
@@ -509,7 +509,6 @@ class SyncTester
 		unless s.empty? || s.match?('please edit .sync/sync_settings.txt')
 			skipped_shas = s.match? 'skipping sha calculations'
 			calculated_shas = s.match? 'computing full sha signatures'
-			puts s
 			if @fast_mode
 				_assert_equals true, skipped_shas, 'sha calculations should be skipped because fast mode is enabled'
 				_assert_equals false, calculated_shas, 'full sha signatures should not be calculated because fast mode is enabled'
