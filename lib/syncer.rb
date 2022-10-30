@@ -108,8 +108,8 @@ class Syncer
 			end
 
 			# another sleep after down sync
-			puts "#{puts_prefix}:🌙  sleeping #{SLEEP_TIME} seconds"
-			sleep SLEEP_TIME
+			puts "#{puts_prefix}:🌙  sleeping #{@settings.sleep_time} seconds"
+			sleep @settings.sleep_time
 		else
 			puts "#{puts_prefix}:💀  WARNING: rsync failed while up-syncing; not syncing this folder down."
 		end
@@ -149,53 +149,6 @@ class Syncer
 		stderr_thread.join
 	end
 
-	# parse file shas from a given list of text file
-	# - can be used to parse the output of shasum, as well
-	# @return [Hash<String, String>] mapping filename => sha256
-	def _load_file_shas(source_file)
-		file_shas = {}
-		source_file.each do |source_file_line|
-			source_file_line.chomp!
-			source_file_sha = source_file_line[0..39] # get the sha
-			source_file_star = source_file_line[41..41]
-			source_file_path = source_file_line[42..-1] # skip space, binary "*" prefix
-			unless '*' == source_file_star && source_file_sha =~ /\A\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\h\z/
-				puts "💀  ERROR: could not load shas; bad shas file or shasum binary '#{SHASUM_BIN}' does not work as expected"
-				exit(-1)
-			end
-			file_shas[source_file_path] = source_file_sha.downcase
-		end
-		file_shas
-	end
-
-	# for the given list of filenames, return a hash filename => sha
-	# - this just calls shasum with these files as input, and parses the output
-	def _get_file_shas(puts_prefix, filenames)
-		# as a special case, if we have no filenames, return the empty list; if we
-		# call shasum without arguments, it won't terminate
-		return {} if filenames.empty?
-
-		filenames_escaped = filenames.map do |filename|
-			Shellwords.escape(filename)
-		end
-		shasum_stdout = ''
-		until filenames_escaped.empty?
-			some_filenames_escaped = filenames_escaped.take(100)
-			filenames_escaped = filenames_escaped.drop(100)
-			num_filenames_processed = filenames.size - filenames_escaped.size
-			unless puts_prefix.nil?
-				print "#{puts_prefix}: △ calculated shas for #{num_filenames_processed} / #{filenames.size} files\r"
-			end
-			shasum_cmd = "#{SHASUM_BIN} #{some_filenames_escaped.join(' ')}"
-			shasum_stdout += `#{shasum_cmd}`
-		end
-		print "\n" unless puts_prefix.nil?
-
-		# shasum_cmd = "#{SHASUM_BIN} #{filenames_escaped.join(' ')}"
-		# shasum_stdout = `#{shasum_cmd}`
-		_load_file_shas(shasum_stdout.split("\n"))
-	end
-
 	# sync a folder UP, using rsync
 	# - this is called by sync_folder
 	# - will not update timefile
@@ -217,28 +170,28 @@ class Syncer
 		end
 
 		# sync them up, echoing status
-		rsync_upstream_folder = Shellwords.escape("#{UPSTREAM_FOLDER}")
-		rsync_cmd = "rsync #{RSYNC_DRY_RUN} #{RSYNC_PROGRESS} --update --compress --times --perms --links --files-from=- . \"#{rsync_upstream_folder}\""
+		rsync_upstream_folder = Shellwords.escape("#{@settings.upstream_folder}")
+		rsync_cmd = "rsync #{@settings.rsync_dry_run} #{@settings.rsync_progress} --update --compress --times --perms --links --files-from=- . \"#{rsync_upstream_folder}\""
 		puts "#{puts_prefix}: △ #{rsync_cmd}"
 		rsync_status = Open3.popen3(ENV, rsync_cmd) do |stdin, stdout, stderr, wait_thread|
 			rsync_files.each do |filename|
 				stdin.puts(filename)
 			end
 			stdin.close
-			capture_and_echo_io("#{puts_prefix}: △ ", stdout, stderr)
+			_capture_and_echo_io("#{puts_prefix}: △ ", stdout, stderr)
 			wait_thread.join
 			wait_thread.value
 		end
 
-		# make sure at least SLEEP_TIME passes between rsync, but do it in a thread
+		# make sure at least @settings.sleep_time passes between rsync, but do it in a thread
 		# so we count the time spent saving the shas file as sleep time
 		sleep_thread = Thread.new do
-			sleep SLEEP_TIME
+			sleep @settings.sleep_time
 		end
 
 		# save the shas file if the rsync was a success
 		if rsync_status.success?
-			if RSYNC_DRY_RUN.empty?
+			if @settings.rsync_dry_run.empty?
 				puts "#{puts_prefix}:✅  Up-sync succeeded; saving the file info for this folder."
 				file_sync_db.save_file_info
 			else
@@ -249,7 +202,7 @@ class Syncer
 		end
 
 		# sleep a short while; this is to prevent ssh thinking that's being flooded
-		puts "#{puts_prefix}:🌙  sleeping #{SLEEP_TIME} seconds"
+		puts "#{puts_prefix}:🌙  sleeping #{@settings.sleep_time} seconds"
 		sleep_thread.join
 
 		# return true if the sync up worked
@@ -261,11 +214,11 @@ class Syncer
 	# @param folder_name [String] the folder name to sync
 	# @return [Boolean] true if folder was down-sync'd, false otherwise
 	def _sync_folder_down(puts_prefix, folder_name, file_sync_db, start_sync_ts)
-		rsync_upstream_folder = Shellwords.escape("#{UPSTREAM_FOLDER}/#{folder_name}")
-		rsync_cmd = "rsync #{RSYNC_DRY_RUN} #{RSYNC_PROGRESS} #{RSYNC_DELETE} --update --exclude \"\\.*\" --compress --recursive --times --perms --links \"#{rsync_upstream_folder}\" ."
+		rsync_upstream_folder = Shellwords.escape("#{@settings.upstream_folder}/#{folder_name}")
+		rsync_cmd = "rsync #{@settings.rsync_dry_run} #{@settings.rsync_progress} #{@settings.rsync_delete} --update --exclude \"\\.*\" --compress --recursive --times --perms --links \"#{rsync_upstream_folder}\" ."
 		puts "#{puts_prefix}: ▼ #{rsync_cmd}"
 		rsync_status = Open3.popen3(ENV, rsync_cmd) do |_stdin, stdout, stderr, wait_thread|
-			capture_and_echo_io("#{puts_prefix}: ▼ ", stdout, stderr)
+			_capture_and_echo_io("#{puts_prefix}: ▼ ", stdout, stderr)
 			wait_thread.join
 			wait_thread.value
 		end
