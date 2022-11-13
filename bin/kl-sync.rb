@@ -5,6 +5,9 @@ require_relative '../lib/syncer'
 
 require 'slop'
 
+# sync stdout so that progress messages are more likely to display correctly
+STDOUT.sync = true if STDOUT.tty?
+
 opts = Slop.parse do |o|
 	o.string '--connect', 'Connect to an existing archive'
 	o.bool '--test', 'Test connection to archive'

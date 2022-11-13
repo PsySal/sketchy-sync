@@ -5,6 +5,7 @@ require 'shellwords'
 
 require_relative 'sync_db'
 require_relative 'sync_settings'
+require_relative 'sync_shasum'
 
 # Synchronize files via rsync
 class Syncer
@@ -12,9 +13,6 @@ class Syncer
 	# - if an explicit folder list is given, they will be created first
 	def sync_all_folders(folders_to_check = nil)
 		@settings = SyncSettings.new
-
-		# sync stdout so that progress messages are more likely to display correctly
-		STDOUT.sync = true
 
 		# do we need to first create them?
 		if folders_to_check
