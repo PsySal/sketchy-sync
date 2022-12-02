@@ -35,6 +35,10 @@ class Syncer
 		end
 	end
 
+	def sync_sync_settings
+
+	end
+
 	private
 
 	# ensure the input list of folders exist (and are directories), creating as needed
@@ -124,29 +128,6 @@ class Syncer
 		end
 	end
 
-	# capture and echo stdout/stderr (from Open3) in threads, joining them after
-	def _capture_and_echo_io(prefix, stdout, stderr)
-		newline_chars = ["\r", "\n"]
-		stdout_thread = Thread.new do
-			is_newline = true
-			while c = stdout.getc
-				print prefix if is_newline
-				print c
-				is_newline = (newline_chars.include? c)
-			end
-		end
-		stderr_thread = Thread.new do
-			is_newline = true
-			while c = stderr.getc
-				print prefix if is_newline
-				print c
-				is_newline = (newline_chars.include? c)
-			end
-		end
-		stdout_thread.join
-		stderr_thread.join
-	end
-
 	# sync a folder UP, using rsync
 	# - this is called by sync_folder
 	# - will not update timefile
@@ -168,18 +149,7 @@ class Syncer
 		end
 
 		# sync them up, echoing status
-		rsync_upstream_folder = Shellwords.escape("#{@settings.upstream_folder}")
-		rsync_cmd = "rsync #{@settings.rsync_dry_run} #{@settings.rsync_progress} --update --compress --times --perms --links --files-from=- . \"#{rsync_upstream_folder}\""
-		puts "#{puts_prefix}: △ #{rsync_cmd}"
-		rsync_status = Open3.popen3(ENV, rsync_cmd) do |stdin, stdout, stderr, wait_thread|
-			rsync_files.each do |filename|
-				stdin.puts(filename)
-			end
-			stdin.close
-			_capture_and_echo_io("#{puts_prefix}: △ ", stdout, stderr)
-			wait_thread.join
-			wait_thread.value
-		end
+		_sync_files_up(puts_prefix, rsync_files)
 
 		# make sure at least @settings.sleep_time passes between rsync, but do it in a thread
 		# so we count the time spent saving the shas file as sleep time
@@ -207,6 +177,22 @@ class Syncer
 		rsync_status.success?
 	end
 
+	def _sync_files_up(puts_prefix, rsync_files)
+		# sync them up, echoing status
+		rsync_upstream_folder = Shellwords.escape("#{@settings.upstream_folder}")
+		rsync_cmd = "rsync #{@settings.rsync_dry_run} #{@settings.rsync_progress} --update --compress --times --perms --links --files-from=- . \"#{rsync_upstream_folder}\""
+		puts "#{puts_prefix}: △ #{rsync_cmd}"
+		rsync_status = Open3.popen3(ENV, rsync_cmd) do |stdin, stdout, stderr, wait_thread|
+			rsync_files.each do |filename|
+				stdin.puts(filename)
+			end
+			stdin.close
+			_capture_and_echo_io("#{puts_prefix}: △ ", stdout, stderr)
+			wait_thread.join
+			wait_thread.value
+		end
+	end
+
 	# sync a given folder DOWN, using rsync
 	#
 	# @param folder_name [String] the folder name to sync
@@ -230,4 +216,28 @@ class Syncer
 
 		rsync_status.success?
 	end
+
+	# capture and echo stdout/stderr (from Open3) in threads, joining them after
+	def _capture_and_echo_io(prefix, stdout, stderr)
+		newline_chars = ["\r", "\n"]
+		stdout_thread = Thread.new do
+			is_newline = true
+			while c = stdout.getc
+				print prefix if is_newline
+				print c
+				is_newline = (newline_chars.include? c)
+			end
+		end
+		stderr_thread = Thread.new do
+			is_newline = true
+			while c = stderr.getc
+				print prefix if is_newline
+				print c
+				is_newline = (newline_chars.include? c)
+			end
+		end
+		stdout_thread.join
+		stderr_thread.join
+	end
+
 end

@@ -17,8 +17,8 @@ class SyncTesterFailedAssertionError < StandardError; end
 # Tests for sync
 # rubocop:disable Metrics/ClassLength
 class SyncTester
-	SYNC_RB = "#{__dir__}/../bin/kl-sync.rb"
-	TESTING_DATA_DIR = "#{__dir__}/../test_data"
+	SYNC_RB = "#{__dir__}/../bin/sketchy-sync.rb"
+	TESTING_DATA_DIR = "#{__dir__}/test_data"
 	TEMP_DIR = "#{__dir__}/../temp"
 	# REMOTE_TEMP_DIR="calvin@musicbox:/Users/calvin/Temp"
 	MAX_RETRIES_PER_TEST = 5
@@ -38,6 +38,7 @@ class SyncTester
 		# git can't commit empty folders; add the one in test data here
 		empty_sub_folder = "#{TESTING_DATA_DIR}/TESTING/empty_sub_folder"
 		_mkdir empty_sub_folder unless _dir_exist?(empty_sub_folder)
+		puts "testing in: #{empty_sub_folder}"
 
 		# ssh session management; we'll map remote_host (String) to an ssh session, and allocate as needed in _exec_remote
 		@remote_ssh_sessions = {}
@@ -69,6 +70,7 @@ class SyncTester
 		puts
 		(['retried tests:'] + @retried_tests).each { |s| puts s } unless @retried_tests.empty?
 		(['failed tests:'] + @failed_tests).each { |s| puts s } unless @failed_tests.empty?
+		@failed_tests.empty?
 	end
 	# rubocop:enable Metrics/AbcSize
 	# rubocop:enable Metrics/CyclomaticComplexity

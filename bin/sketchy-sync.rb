@@ -22,9 +22,15 @@ end
 
 connect_remote_path = opts[:connect]
 if connect_remote_path
-	tester = SyncTester.new(connect_remote_path)
-	tester.run_tests
-	exit
+	tester = SyncTester.new("#{connect_remote_path}/_TEST")
+	unless tester.run_tests
+		puts 'Tests failed; not connecting'
+		exit -1
+	end
+
+	# todo: sync the .sync/sync_settings.yml file down, if we can
+
+	exit 0
 end
 
 folders_to_check = opts.args
