@@ -28,8 +28,10 @@ if connect_remote_path
 		exit -1
 	end
 
-	# todo: sync the .sync/sync_settings.yml file down, if we can
+	# this will sync down settings and potentially exit with an error message that the user needs to initialize
+	SyncSettings.new(connect_remote_path)
 
+	puts "Connected."
 	exit 0
 end
 
@@ -37,8 +39,6 @@ folders_to_check = opts.args
 folders_to_check = nil if folders_to_check.empty?
 
 syncer = Syncer.new
-
-puts 'test' if opts[:test]
+syncer.sync_sync_settings
 
 syncer.sync_all_folders(folders_to_check)
-

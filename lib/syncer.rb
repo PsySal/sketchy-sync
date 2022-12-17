@@ -9,11 +9,13 @@ require_relative 'sync_shasum'
 
 # Synchronize files via rsync
 class Syncer
+	def initialize
+		@settings = SyncSettings.new
+	end
+
 	# sync a list of folders, or all first-level sub-folders in the current working directory
 	# - if an explicit folder list is given, they will be created first
 	def sync_all_folders(folders_to_check = nil)
-		@settings = SyncSettings.new
-
 		# do we need to first create them?
 		if folders_to_check
 			_check_create_all_folders(folders_to_check)
@@ -36,7 +38,13 @@ class Syncer
 	end
 
 	def sync_sync_settings
+		Syncer.sync_sync_settings_down(@settings.upstream_folder)
+		_sync_files_up('sync settings', [SyncSettings::SYNC_SETTINGS_FILENAME])
+	end
 
+	# can be called when connecting to get initial setttings, we don't need to create Syncer to do this
+	def self.sync_sync_settings_down(remote_path)
+		self._sync_sync_settings_down('sync settings', remote_path, SyncSettings::SYNC_SETTINGS_FILENAME)
 	end
 
 	private
@@ -187,7 +195,7 @@ class Syncer
 				stdin.puts(filename)
 			end
 			stdin.close
-			_capture_and_echo_io("#{puts_prefix}: △ ", stdout, stderr)
+			Syncer._capture_and_echo_io("#{puts_prefix}: △ ", stdout, stderr)
 			wait_thread.join
 			wait_thread.value
 		end
@@ -202,7 +210,7 @@ class Syncer
 		rsync_cmd = "rsync #{@settings.rsync_dry_run} #{@settings.rsync_progress} #{@settings.rsync_delete} --update --exclude \"\\.*\" --compress --recursive --times --perms --links \"#{rsync_upstream_folder}\" ."
 		puts "#{puts_prefix}: ▼ #{rsync_cmd}"
 		rsync_status = Open3.popen3(ENV, rsync_cmd) do |_stdin, stdout, stderr, wait_thread|
-			_capture_and_echo_io("#{puts_prefix}: ▼ ", stdout, stderr)
+			Syncer._capture_and_echo_io("#{puts_prefix}: ▼ ", stdout, stderr)
 			wait_thread.join
 			wait_thread.value
 		end
@@ -217,8 +225,24 @@ class Syncer
 		rsync_status.success?
 	end
 
+	# just sync the .sync/sync_settings.txt (yaml) file down
+	def self._sync_sync_settings_down(puts_prefix, rsync_upstream_folder, sync_settings_filename)
+		rsync_cmd = Shellwords.join([
+			'rsync', '--progress', '--update', '--compress', '--times', '--perms', '--links',
+			"#{rsync_upstream_folder}/#{sync_settings_filename}", sync_settings_filename
+		])
+		puts "#{puts_prefix}: ▼ #{rsync_cmd}"
+		rsync_status = Open3.popen3(ENV, rsync_cmd) do |_stdin, stdout, stderr, wait_thread|
+			Syncer._capture_and_echo_io("#{puts_prefix}: ▼ ", stdout, stderr)
+			wait_thread.join
+			wait_thread.value
+		end
+
+		rsync_status.success?
+	end
+
 	# capture and echo stdout/stderr (from Open3) in threads, joining them after
-	def _capture_and_echo_io(prefix, stdout, stderr)
+	def self._capture_and_echo_io(prefix, stdout, stderr)
 		newline_chars = ["\r", "\n"]
 		stdout_thread = Thread.new do
 			is_newline = true

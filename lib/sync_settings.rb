@@ -8,8 +8,9 @@ class SyncSettings
 	SYNC_SETTINGS_BASENAME = 'sync_settings.txt'
 	SYNC_SETTINGS_FILENAME = "#{DOT_SYNC_FOLDER}/#{SYNC_SETTINGS_BASENAME}"
 
-	def initialize
-		_check_create_dot_sync_folder
+	# @param connect_remote_path [String] if set, try to initialize the sync settings down if they don't yet exist
+	def initialize(connect_remote_path = nil)
+		_check_initialize_dot_sync_folder(connect_remote_path)
 		_load_settings
 		_validate_settings
 	end
@@ -92,11 +93,21 @@ class SyncSettings
 		exit(-1)
 	end
 
-	def _check_create_dot_sync_folder
-		return if File.directory?(DOT_SYNC_FOLDER)
+	def _check_initialize_dot_sync_folder(connect_remote_path)
+		return if File.file?(SYNC_SETTINGS_FILENAME)
 
-		puts "creating #{DOT_SYNC_FOLDER}"
-		Dir.mkdir(DOT_SYNC_FOLDER)
+		unless File.directory?(DOT_SYNC_FOLDER)
+			puts "creating #{DOT_SYNC_FOLDER}"
+			Dir.mkdir(DOT_SYNC_FOLDER)
+		end
+
+		if connect_remote_path
+			puts "syncing down"
+			return if Syncer.sync_sync_settings_down(connect_remote_path)
+		end
+
+		upstream_folder = connect_remote_path || 'user@example.com:/Path/to/archive'
+
 		File.open(SYNC_SETTINGS_FILENAME, 'w') do |f|
 			f.write <<~END_OF_SYNC_SETTINGS_STUB
 				# This file controls sync settings. It must be edited before sync will work.
@@ -104,7 +115,7 @@ class SyncSettings
 				# this defines the server you sync to
 				# - set it to an rsync-able path to sync to, generally an ssh-able path
 				# - every node you create should sync to the same upstream
-				upstream_folder: "user@example.com:/Path/to/archive"
+				upstream_folder: "#{upstream_folder}"
 
 				# this controls the delay between syncing servers, to avoid your server detecting a connection flood
 				# - set it to a larger value if you see connection failures
