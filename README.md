@@ -45,4 +45,12 @@ is no real guarantee which edit will "stick". Typically in this case you will si
 
 ## Advanced
 
-There are some options in .sync/sync_settings.yaml you can toy with.
+There are some options in .sync/sync_settings.yaml you can toy with. Not currently documented.
+
+## Building, Installing Gem
+
+```bash
+$ gem build sketchy_sync.gemspec
+$ gem install ./sketchy_sync-2.0.0.gem
+``
+
