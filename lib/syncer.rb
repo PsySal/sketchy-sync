@@ -157,7 +157,7 @@ class Syncer
 		end
 
 		# sync them up, echoing status
-		_sync_files_up(puts_prefix, rsync_files)
+		rsync_status = _sync_files_up(puts_prefix, rsync_files)
 
 		# make sure at least @settings.sleep_time passes between rsync, but do it in a thread
 		# so we count the time spent saving the shas file as sleep time
@@ -199,6 +199,7 @@ class Syncer
 			wait_thread.join
 			wait_thread.value
 		end
+		rsync_status
 	end
 
 	# sync a given folder DOWN, using rsync
