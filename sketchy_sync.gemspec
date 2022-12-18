@@ -17,4 +17,6 @@ Gem::Specification.new do |s|
 	s.executables << 'sketchy-sync.rb'
 	s.homepage    = 'https://rubygems.org/gems/sketchy_sync'
 	s.license     = 'MIT'
+	s.add_runtime_dependency 'net-ssh', '~> 7.0', '>= 7.0.1'
+	s.add_runtime_dependency 'slop', '~> 4.9', '>= 4.9.2'
 end
